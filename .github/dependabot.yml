@@ -4,26 +4,25 @@ updates:
     directory: /
     schedule: { interval: weekly }
     groups:
-      # Minor e patch num só PR; majors de cada pacote ficam em PRs separados.
+      # Minor e patch num só PR.
       minor-e-patch:
         update-types: ["minor", "patch"]
     ignore:
-      # Majors destes exigem migração manual.
-      - dependency-name: next
-        update-types: ["version-update:semver-major"]
-      - dependency-name: react
-        update-types: ["version-update:semver-major"]
-      - dependency-name: react-dom
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "@prisma/client"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: prisma
+      # Majors exigem migração manual (Next, React, Prisma, zod, undici, pino, lucide...).
+      - dependency-name: "*"
         update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: docker
     directory: /
     schedule: { interval: weekly }
+    ignore:
+      # A imagem base de Node acompanha a versão LTS usada na CI (22).
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]

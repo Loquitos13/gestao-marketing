@@ -82,7 +82,7 @@ Com SMTP e Redis, os proprietários e administradores recebem um email quando o 
 
 ## Taxas de câmbio (BCE)
 
-O worker importa todos os dias às 16:30 UTC as taxas de referência do Banco Central Europeu (`eurofxref-daily.xml`, base EUR, ~30 moedas, sem chave) e grava-as com a fonte «ECB». As taxas introduzidas manualmente em Definições para o mesmo dia nunca são substituídas. `FX_AUTO_ECB=false` desliga a importação.
+O worker importa todos os dias às 16:30 UTC as taxas de referência do Banco Central Europeu (`eurofxref-daily.xml`, base EUR, ~30 moedas, sem chave) e grava-as com a fonte «ECB». As taxas introduzidas manualmente em Definições para o mesmo dia nunca são substituídas. Liga-se e desliga-se em **Integrações → Configuração → Taxas de câmbio (BCE)** (ligada por omissão; o botão «Testar» confirma que o BCE responde).
 
 ## Depois de ligar
 

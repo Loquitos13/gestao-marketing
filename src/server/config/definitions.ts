@@ -20,9 +20,10 @@ export type SettingKey =
   | "REDIS_URL"
   | "OLLAMA_URL"
   | "AGENT_MODEL"
-  | "PAGESPEED_API_KEY";
+  | "PAGESPEED_API_KEY"
+  | "FX_AUTO_ECB";
 
-export type SettingGroupKey = "app" | "google" | "meta" | "semrush" | "smtp" | "redis" | "agent" | "pagespeed";
+export type SettingGroupKey = "app" | "google" | "meta" | "semrush" | "smtp" | "redis" | "agent" | "pagespeed" | "fx";
 
 /** O modelo de linguagem tem de correr nesta máquina ou na rede local: nenhum dado sai do servidor. */
 export function isLocalUrl(v: string): boolean {
@@ -137,6 +138,13 @@ export const SETTING_GROUPS: SettingGroup[] = [
     description: "Velocidade das páginas do cliente e dos concorrentes (API gratuita da Google). Sem chave a quota é muito baixa.",
     testable: true,
     fields: [{ key: "PAGESPEED_API_KEY", label: "API key", secret: true, required: true, hint: "Google Cloud → APIs e serviços → ativar PageSpeed Insights API → Credenciais.", schema: text(100) }],
+  },
+  {
+    key: "fx",
+    label: "Taxas de câmbio (BCE)",
+    description: "Importação diária (16:30 UTC) das taxas de referência do Banco Central Europeu, sem chave. As taxas registadas manualmente em Definições prevalecem.",
+    testable: true,
+    fields: [{ key: "FX_AUTO_ECB", label: "Importação automática", placeholder: "true", hint: "true liga, false desliga. Precisa do worker a correr.", schema: text(5).transform((v) => v.toLowerCase()).pipe(z.enum(["true", "false"])) }],
   },
 ];
 

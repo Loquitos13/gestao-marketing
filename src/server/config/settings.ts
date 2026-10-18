@@ -26,6 +26,7 @@ export interface Config {
   OLLAMA_URL: string;
   AGENT_MODEL: string;
   PAGESPEED_API_KEY?: string;
+  FX_AUTO_ECB: string;
 }
 
 export type SettingSource = "db" | "env" | "default" | "missing";
@@ -38,6 +39,7 @@ const DEFAULTS: Partial<Record<SettingKey, string>> = {
   SMTP_PORT: "587",
   OLLAMA_URL: "http://127.0.0.1:11434",
   AGENT_MODEL: "qwen2.5:7b-instruct",
+  FX_AUTO_ECB: "true",
 };
 
 const TTL_MS = 15_000;

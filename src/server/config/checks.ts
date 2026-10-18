@@ -2,6 +2,7 @@ import { Redis, type RedisOptions } from "ioredis";
 import { smtpTransport } from "@/server/notify/email";
 import { redisConnection } from "@/server/sync/queue";
 import { ollamaStatus } from "@/server/agent/llm";
+import { fetchEcbRates } from "@/server/fx/ecb";
 import type { SettingGroupKey } from "./definitions";
 import { getConfig, type Config } from "./settings";
 
@@ -94,7 +95,12 @@ async function checkPagespeed(c: Config): Promise<CheckResult> {
   return { ok: false, message: `A Google rejeitou o pedido${msg ? `: ${msg.slice(0, 160)}` : ` (HTTP ${r.status})`}.` };
 }
 
-const CHECKS: Partial<Record<SettingGroupKey, (c: Config) => Promise<CheckResult>>> = { google: checkGoogle, meta: checkMeta, semrush: checkSemrush, smtp: checkSmtp, redis: checkRedis, agent: checkAgent, pagespeed: checkPagespeed };
+async function checkFx(): Promise<CheckResult> {
+  const r = await fetchEcbRates();
+  return { ok: true, message: `BCE respondeu: ${Object.keys(r.rates).length} moedas com data ${r.date}.` };
+}
+
+const CHECKS: Partial<Record<SettingGroupKey, (c: Config) => Promise<CheckResult>>> = { google: checkGoogle, meta: checkMeta, semrush: checkSemrush, smtp: checkSmtp, redis: checkRedis, agent: checkAgent, pagespeed: checkPagespeed, fx: checkFx };
 
 export async function checkGroup(group: SettingGroupKey): Promise<CheckResult> {
   const fn = CHECKS[group];
