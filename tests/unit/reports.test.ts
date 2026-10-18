@@ -22,10 +22,13 @@ describe("comparação entre relatórios", () => {
     expect(comparisonWindow("2026-11-01", reports, "out")).toEqual({ start: "2026-09-01", end: "2026-09-30" });
   });
 
-  it("só compara com relatórios do mesmo número de dias", () => {
+  it("só compara com relatórios de duração semelhante", () => {
     const mixed = [...reports, { id: "sem", start: "2026-11-02", end: "2026-11-08", generatedAt: 3 }];
     expect(comparisonWindow("2026-12-01", mixed, undefined, "2026-12-31")).toEqual({ start: "2026-10-01", end: "2026-10-31" });
     expect(comparisonWindow("2026-11-09", mixed, undefined, "2026-11-15")).toEqual({ start: "2026-11-02", end: "2026-11-08" });
+    // Janeiro (31) e fevereiro (28) são ambos mensais.
+    const jan = [{ id: "jan", start: "2026-01-01", end: "2026-01-31", generatedAt: 1 }];
+    expect(comparisonWindow("2026-02-01", jan, undefined, "2026-02-28")).toEqual({ start: "2026-01-01", end: "2026-01-31" });
   });
 });
 

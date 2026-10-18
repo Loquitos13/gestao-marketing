@@ -59,11 +59,14 @@ type Rec = { title: string; explanation: string; action: string; priority: numbe
 /**
  * Período do último relatório que terminou antes deste. O primeiro relatório,
  * e um relatório sem nenhum anterior, não tem comparação.
- * Com `currentEnd`, só relatórios com o mesmo número de dias servem de comparação.
+ * Com `currentEnd`, só relatórios de duração semelhante (±15%: janeiro vs fevereiro
+ * conta, semanal vs mensal não) servem de comparação.
  */
 export function comparisonWindow(currentStart: string, reports: { id: string; start: string; end: string; generatedAt: number }[], excludeId?: string, currentEnd?: string): { start: ISODate; end: ISODate } | null {
+  const len = currentEnd ? dayCount(currentStart, currentEnd) : null;
+  const similar = (r: { start: string; end: string }) => len === null || Math.abs(dayCount(r.start, r.end) - len) <= Math.max(len, dayCount(r.start, r.end)) * 0.15;
   const best = reports
-    .filter((r) => r.id !== excludeId && r.end < currentStart && (!currentEnd || dayCount(r.start, r.end) === dayCount(currentStart, currentEnd)))
+    .filter((r) => r.id !== excludeId && r.end < currentStart && similar(r))
     .sort((a, b) => (a.end === b.end ? b.generatedAt - a.generatedAt : a.end < b.end ? 1 : -1))[0];
   return best ? { start: best.start, end: best.end } : null;
 }
