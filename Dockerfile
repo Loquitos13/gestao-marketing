@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # Alvos: "app" (Next.js standalone) e "worker" (BullMQ + migrações + seed).
 
-FROM node:22-bookworm-slim AS base
+FROM node:26-bookworm-slim AS base
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
