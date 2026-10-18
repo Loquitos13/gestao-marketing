@@ -1,6 +1,7 @@
 import type { Client, Platform, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { addDays, eachDay, fromDate, todayInTz, toDate, weekStart, type ISODate } from "@/lib/dates";
+import { convertAmount, loadRates } from "@/server/queries/fx";
 import { backtestHoltWinters, fitHoltWinters, forecast, wape, type HwModel } from "./ml/forecast";
 import { accountPriorB, fitResponseCurve, predictConversions, type CurvePoint, type ResponseCurve } from "./ml/response-curve";
 
@@ -23,20 +24,26 @@ export interface DailyRow {
 
 export async function loadDailyRows(clientId: string, currency: string, start: ISODate, end: ISODate): Promise<DailyRow[]> {
   const rows = await prisma.adMetricDaily.groupBy({
-    by: ["date", "platform", "campaignExternalId"],
-    // shortcut: linhas noutra moeda são ignoradas (não convertidas); converter com fx quando houver contas multi-moeda.
-    where: { clientId, currency, level: "CAMPAIGN", date: { gte: toDate(start), lte: toDate(end) } },
+    by: ["date", "platform", "campaignExternalId", "currency"],
+    where: { clientId, level: "CAMPAIGN", date: { gte: toDate(start), lte: toDate(end) } },
     _sum: { cost: true, conversions: true, conversionValue: true, clicks: true },
   });
-  return rows.map((r) => ({
-    date: fromDate(r.date),
-    platform: r.platform,
-    campaignExternalId: r.campaignExternalId,
-    cost: Number(r._sum.cost ?? 0),
-    conversions: Number(r._sum.conversions ?? 0),
-    conversionValue: Number(r._sum.conversionValue ?? 0),
-    clicks: Number(r._sum.clicks ?? 0),
-  }));
+  const fx = rows.some((r) => r.currency !== currency) ? await loadRates(end) : null;
+  const out: DailyRow[] = [];
+  for (const r of rows) {
+    const factor = r.currency === currency ? 1 : convertAmount(1, r.currency, currency, fx!);
+    if (factor === null) continue; // sem taxa registada para esta moeda: linha ignorada
+    out.push({
+      date: fromDate(r.date),
+      platform: r.platform,
+      campaignExternalId: r.campaignExternalId,
+      cost: Number(r._sum.cost ?? 0) * factor,
+      conversions: Number(r._sum.conversions ?? 0),
+      conversionValue: Number(r._sum.conversionValue ?? 0) * factor,
+      clicks: Number(r._sum.clicks ?? 0),
+    });
+  }
+  return out;
 }
 
 /** Série diária contínua (dias sem dados = 0) desde o primeiro dia com dados. */

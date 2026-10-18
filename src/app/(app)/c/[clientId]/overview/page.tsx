@@ -79,6 +79,15 @@ export default async function OverviewPage(props: { params: Promise<{ clientId: 
         {dash.warnings.map((w) => (
           <Notice key={w}>{w}</Notice>
         ))}
+        {dash.excludedPlatforms.length > 0 && (
+          <Notice>
+            {dash.excludedPlatforms.map((p) => PLATFORM_LABELS[p]).join(", ")} ausente dos gráficos, da repartição por canal e dos totais de investimento.{" "}
+            <Link href="/settings" className="font-medium underline-offset-2 hover:underline">
+              Registe a taxa de câmbio em Definições
+            </Link>
+            .
+          </Notice>
+        )}
       </div>
 
       {headline.length > 0 && <KpiStrip kpis={headline} fmt={fmt} compareLabel={compareLabel} cols={6} />}
@@ -163,6 +172,19 @@ export default async function OverviewPage(props: { params: Promise<{ clientId: 
                     <Td num>{c.roas === null ? "—" : formatValue(c.roas, "multiplier", fmt)}</Td>
                     <Td num>
                       <DeltaCell pct={c.roasDelta} />
+                    </Td>
+                  </tr>
+                ))}
+                {dash.excludedPlatforms.map((p) => (
+                  <tr key={p}>
+                    <Td>
+                      <span className="inline-flex items-center gap-2 font-medium">
+                        <Dot tone={DOT[p as keyof typeof DOT] ?? "seo"} />
+                        {PLATFORM_LABELS[p]}
+                      </span>
+                    </Td>
+                    <Td className="text-faint" colSpan={7}>
+                      Não disponível — sem taxa de câmbio
                     </Td>
                   </tr>
                 ))}

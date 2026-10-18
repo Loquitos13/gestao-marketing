@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/server/audit", () => ({ audit: async () => undefined }));
+const fxRates = vi.hoisted(() => new Map<string, number>());
+vi.mock("@/server/queries/fx", async (orig) => ({ ...(await orig<typeof import("@/server/queries/fx")>()), loadRates: async () => ({ date: "2026-01-01", rates: fxRates }) }));
 
 import type { DataSource } from "@prisma/client";
 import { budgetBlockReason, checkBudgetChange, clampStep, nativeStatus, sameState } from "@/server/ads-write/guards";
@@ -9,8 +11,8 @@ import { validateMetaAd, validateRsa, validPublicUrl, type MetaLinkAdSpec, type 
 import { buildOperation, googleExecutor } from "@/server/ads-write/google";
 import { buildFields } from "@/server/ads-write/meta";
 import { metaCurrencyOffset } from "@/server/integrations/meta/ads";
-import { confirmAndApply } from "@/server/ads-write/service";
-import type { AdsExecutor, WriteContext } from "@/server/ads-write/types";
+import { confirmAndApply, createDraft, revertChange } from "@/server/ads-write/service";
+import type { AdsExecutor, RemoteState, WriteContext } from "@/server/ads-write/types";
 
 const ds = (over: Partial<DataSource> = {}) => ({ id: "ds1", externalId: "123-456-7890", currency: "EUR", platform: "GOOGLE_ADS", origin: "REAL", settings: {}, ...over }) as DataSource;
 const ctx = (over: Partial<DataSource> = {}, fetchImpl?: typeof fetch): WriteContext => ({ ds: ds(over), token: "tok", loginCustomerId: null, fetchImpl });
@@ -139,23 +141,32 @@ describe("distribuição de orçamento", () => {
 });
 
 /** Base de dados mínima em memória para o fluxo de confirmação. */
-function fakeDb(opts: { enabled?: boolean; remote?: string }) {
-  const change = { id: "ch1", clientId: "c1", dataSourceId: "ds1", platform: "GOOGLE_ADS", operation: "SET_STATUS", entityLevel: "CAMPAIGN", entityId: "camp1", entityName: "Camp", before: { status: "ENABLED" }, after: { status: "PAUSED" }, status: "DRAFT", simulated: false, validation: { target: { level: "CAMPAIGN", externalId: "11" } }, revertOfId: null, recommendationId: null, source: "MANUAL" } as Record<string, unknown>;
-  const campaign = { id: "camp1", clientId: "c1", name: "Camp", platform: "GOOGLE_ADS", dataSourceId: "ds1", status: "ENABLED", dailyBudget: 50, externalId: "11", raw: null };
+function fakeDb(opts: { enabled?: boolean; remote?: string; change?: Record<string, unknown>; applyError?: string; afterApply?: RemoteState; pendingRevert?: boolean; dsCurrency?: string }) {
+  const change = { id: "ch1", clientId: "c1", dataSourceId: "ds1", platform: "GOOGLE_ADS", operation: "SET_STATUS", entityLevel: "CAMPAIGN", entityId: "camp1", entityName: "Camp", before: { status: "ENABLED" }, after: { status: "PAUSED" }, status: "DRAFT", simulated: false, validation: { target: { level: "CAMPAIGN", externalId: "11" } }, revertOfId: null, recommendationId: null, source: "MANUAL", appliedAt: null, ...opts.change } as Record<string, unknown>;
+  const campaign = { id: "camp1", clientId: "c1", name: "Camp", platform: "GOOGLE_ADS", dataSourceId: "ds1", status: "ENABLED", dailyBudget: 50, externalId: "11", raw: { budgetResourceName: "customers/1234567890/campaignBudgets/7" } };
   const db = {
-    client: { findFirstOrThrow: async () => ({ id: "c1", organizationId: "o1", adsManagementEnabled: opts.enabled ?? true, maxBudgetStepPct: 0.2 }) },
+    client: { findFirstOrThrow: async () => ({ id: "c1", organizationId: "o1", adsManagementEnabled: opts.enabled ?? true, maxBudgetStepPct: 0.2, currency: "EUR" }) },
     adChange: {
       count: async () => 0,
       updateMany: async ({ where, data }: { where: { status: string }; data: object }) => (change.status === where.status ? (Object.assign(change, data), { count: 1 }) : { count: 0 }),
       findUniqueOrThrow: async () => ({ ...change }),
-      update: async ({ data }: { data: object }) => Object.assign(change, data),
+      findFirst: async ({ where }: { where: { status?: string; revertOfId?: string } }) => (where.revertOfId ? (opts.pendingRevert ? { id: "rev0" } : null) : change.status === where.status ? { ...change } : null),
+      create: async ({ data }: { data: object }) => ({ id: "ch2", ...data }),
+      update: async ({ where, data }: { where: { id: string }; data: object }) => (where.id === change.id ? Object.assign(change, data) : { id: where.id, ...data }),
     },
     campaign: { findFirst: async () => campaign, update: async ({ data }: { data: object }) => Object.assign(campaign, data) },
-    dataSource: { findUniqueOrThrow: async () => ds() },
+    dataSource: { findUniqueOrThrow: async () => ds({ currency: opts.dsCurrency ?? "EUR" }) },
     recommendation: { updateMany: async () => ({ count: 0 }) },
   };
   const applied: unknown[] = [];
-  const executor: AdsExecutor = { read: async () => ({ status: opts.remote ?? "ENABLED" }), validate: async () => undefined, apply: async (_c, spec) => void applied.push(spec) };
+  const executor: AdsExecutor = {
+    read: async () => (applied.length && opts.afterApply ? opts.afterApply : { status: opts.remote ?? "ENABLED", dailyBudget: 50 }),
+    validate: async () => undefined,
+    apply: async (_c, spec) => {
+      applied.push(spec);
+      if (opts.applyError) throw new Error(opts.applyError);
+    },
+  };
   return { db: db as never, change, campaign, applied, deps: { db: db as never, executors: { GOOGLE_ADS: executor }, writeContext: async () => ctx() } };
 }
 
@@ -185,5 +196,57 @@ describe("confirmação e aplicação", () => {
     const f = fakeDb({});
     await expect(confirmAndApply({ ...input, acknowledged: false }, f.deps)).rejects.toThrow(/Confirme/);
     expect(f.change.status).toBe("DRAFT");
+  });
+  it("resposta perdida: se a releitura já mostra o novo estado, fica APPLIED com nota", async () => {
+    const f = fakeDb({ applyError: "timeout", afterApply: { status: "PAUSED" } });
+    const r = await confirmAndApply(input, f.deps);
+    expect(r.status).toBe("APPLIED");
+    expect(String(r.error)).toMatch(/apesar de um erro posterior: timeout/);
+    expect(f.campaign.status).toBe("PAUSED");
+  });
+  it("erro após envio sem confirmação na releitura: FAILED com resultado desconhecido", async () => {
+    const f = fakeDb({ applyError: "timeout" });
+    await expect(confirmAndApply(input, f.deps)).rejects.toThrow(/Resultado desconhecido/);
+    expect(f.change.status).toBe("FAILED");
+  });
+  it("revalida o passo máximo ao confirmar; reversões ficam isentas", async () => {
+    const budget = { operation: "SET_DAILY_BUDGET", before: { dailyBudget: 50 }, after: { dailyBudget: 80 } };
+    const f = fakeDb({ change: budget });
+    await expect(confirmAndApply(input, f.deps)).rejects.toThrow(/excede o limite/);
+    expect(f.applied).toHaveLength(0);
+    const rev = fakeDb({ change: { ...budget, revertOfId: "ch0" }, afterApply: { dailyBudget: 80 } });
+    const r = await confirmAndApply(input, rev.deps);
+    expect(r.status).toBe("APPLIED");
+    expect(rev.campaign.dailyBudget).toBe(80);
+  });
+});
+
+describe("reversão", () => {
+  const applied = { status: "APPLIED", operation: "SET_DAILY_BUDGET", before: { dailyBudget: 50, currency: "EUR" }, after: { dailyBudget: 60, currency: "EUR" }, appliedAt: new Date("2026-03-01") };
+  it("cria a proposta inversa de uma alteração aplicada", async () => {
+    const f = fakeDb({ change: applied });
+    const r = await revertChange("ch1", "c1", "o1", "u1", f.db);
+    expect(r.before).toEqual({ dailyBudget: 60 });
+    expect(r.after).toEqual({ dailyBudget: 50 });
+    expect(r.revertOfId).toBe("ch1");
+    expect(r.status ?? "DRAFT").toBe("DRAFT");
+  });
+  it("recusa quando já existe uma reversão pendente ou a alteração não está aplicada", async () => {
+    await expect(revertChange("ch1", "c1", "o1", "u1", fakeDb({ change: applied, pendingRevert: true }).db)).rejects.toThrow(/reversão pendente/);
+    await expect(revertChange("ch1", "c1", "o1", "u1", fakeDb({}).db)).rejects.toThrow(/aplicadas/);
+  });
+});
+
+describe("rascunho com conversão cambial", () => {
+  const input = { clientId: "c1", organizationId: "o1", userId: "u1", level: "CAMPAIGN" as const, entityId: "camp1", operation: "SET_DAILY_BUDGET" as const, dailyBudget: 50, currency: "EUR" };
+  it("converte o valor para a moeda da conta e guarda a moeda no antes/depois", async () => {
+    fxRates.set("EUR>USD", 1.1);
+    const r = await createDraft(input, fakeDb({ dsCurrency: "USD" }).deps);
+    expect(r.after).toEqual({ dailyBudget: 55, currency: "USD" });
+    expect(r.before).toMatchObject({ dailyBudget: 50, currency: "USD" });
+  });
+  it("sem taxa registada recusa com o par de moedas", async () => {
+    fxRates.clear();
+    await expect(createDraft(input, fakeDb({ dsCurrency: "USD" }).deps)).rejects.toThrow(/EUR→USD/);
   });
 });

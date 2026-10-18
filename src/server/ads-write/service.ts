@@ -1,7 +1,9 @@
 import type { AdChange, AdChangeOperation, DataSource, Prisma, PrismaClient } from "@prisma/client";
 import { prisma as defaultDb } from "@/lib/prisma";
 import { audit } from "@/server/audit";
+import { fromDate } from "@/lib/dates";
 import { IntegrationError } from "@/server/integrations/http";
+import { convertAmount, loadRates } from "@/server/queries/fx";
 import { getValidAccessToken } from "@/server/integrations/tokens";
 import { AdsWriteError, loadEntity, localState, updateLocal } from "./entities";
 import { checkBudgetChange, fieldsOf, MAX_APPLIED_PER_HOUR, nativeStatus, sameState, type Desired } from "./guards";
@@ -23,6 +25,8 @@ export interface DraftInput {
   operation: "SET_STATUS" | "SET_DAILY_BUDGET";
   desiredStatus?: Desired;
   dailyBudget?: number;
+  /** Moeda em que dailyBudget vem expresso; por omissão a da conta (ALLOCATION: a do cliente). */
+  currency?: string;
   reason?: string | null;
   source?: "MANUAL" | "RULE" | "ALLOCATION" | "AGENT";
   recommendationId?: string | null;
@@ -75,9 +79,15 @@ export async function createDraft(input: DraftInput, deps: WriteDeps = {}): Prom
     if (after.status === e.status) throw new AdsWriteError(`Já está ${input.desiredStatus === "PAUSED" ? "pausado" : "ativo"}.`);
     if (!["ENABLED", "ACTIVE", "PAUSED"].includes(e.status)) throw new AdsWriteError(`Estado atual (${e.status}) não permite esta alteração.`);
   } else {
-    // dailyBudget está na moeda da conta; sem conversão, só aceitamos contas na moeda do cliente.
-    if (ds.currency !== client.currency) throw new AdsWriteError(`A conta de anúncios está em ${ds.currency} e o cliente em ${client.currency}: altere o orçamento diretamente na plataforma.`);
-    const value = Math.round((input.dailyBudget ?? NaN) * 100) / 100;
+    // dailyBudget guarda-se na moeda da conta; distribuição e agente raciocinam na moeda do cliente, converte-se aqui.
+    const from = input.currency ?? (input.source === "ALLOCATION" ? client.currency : ds.currency);
+    let value = input.dailyBudget ?? NaN;
+    if (from !== ds.currency) {
+      const conv = convertAmount(value, from, ds.currency, await loadRates(fromDate(new Date())));
+      if (conv === null) throw new AdsWriteError(`Sem taxa de câmbio ${from}→${ds.currency} registada: não é possível converter o orçamento para a moeda da conta.`);
+      value = conv;
+    }
+    value = Math.round(value * 100) / 100;
     const err = checkBudgetChange(e.budget, value, Number(client.maxBudgetStepPct));
     if (err) throw new AdsWriteError(err);
     if (e.platform === "GOOGLE_ADS" && ds.origin === "REAL" && !e.target.budgetResourceName) throw new AdsWriteError("Orçamento sem referência na plataforma: sincronize a fonte antes de alterar.");
@@ -94,8 +104,8 @@ export async function createDraft(input: DraftInput, deps: WriteDeps = {}): Prom
       entityId: e.id,
       externalId: e.target.externalId,
       entityName: e.level === "CAMPAIGN" ? e.name : `${e.campaignName} › ${e.name}`,
-      before: json(before),
-      after: json(after),
+      before: json({ ...before, currency: ds.currency }),
+      after: json({ ...after, currency: ds.currency }),
       reason: input.reason ?? null,
       source: input.source ?? "MANUAL",
       recommendationId: input.recommendationId ?? null,

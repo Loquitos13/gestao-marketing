@@ -167,7 +167,7 @@ export async function draftAllocationAction(_: ActionState, fd: FormData): Promi
     const errors: string[] = [];
     for (const l of lines) {
       try {
-        await createDraft({ clientId: client.id, organizationId: ctx.organizationId, userId: ctx.userId, level: l.entity.level, entityId: l.entity.entityId, operation: "SET_DAILY_BUDGET", dailyBudget: l.proposed, source: "ALLOCATION", planId, reason: l.reason });
+        await createDraft({ clientId: client.id, organizationId: ctx.organizationId, userId: ctx.userId, level: l.entity.level, entityId: l.entity.entityId, operation: "SET_DAILY_BUDGET", dailyBudget: l.proposed, currency: client.currency, source: "ALLOCATION", planId, reason: l.reason });
       } catch (e) {
         errors.push(`${l.entity.name}: ${e instanceof Error ? e.message : String(e)}`);
       }

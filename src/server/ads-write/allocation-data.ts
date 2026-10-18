@@ -2,6 +2,7 @@ import type { Client, Platform } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { addDays, dayCount, fromDate, minDate, todayInTz, type ISODate } from "@/lib/dates";
 import { computePacing } from "@/server/budget/pacing";
+import { convertAmount, loadRates } from "@/server/queries/fx";
 import { queryPaid, type PaidResultRow } from "@/server/queries/paid";
 import { dataUntil, type ClientContext } from "@/server/queries/context";
 import { allocateBudget, type AllocEntity, type AllocResult, type GoalKind } from "./allocation";
@@ -29,10 +30,6 @@ export async function loadAllocation(client: Client, ctx: ClientContext, now = n
   const period = budget ? { start: fromDate(budget.periodStart), end: fromDate(budget.periodEnd), amount: Number(budget.amount), source: "BUDGET" as const } : client.monthlyBudget ? { ...monthBounds(today), amount: Number(client.monthlyBudget), source: "CLIENT" as const } : null;
   if (!period) return { ok: false, reason: "Defina o orçamento total do mês (Orçamento → novo orçamento “Total”, ou o orçamento mensal nas definições do cliente)." };
 
-  // Campaign.dailyBudget está na moeda da conta de anúncios; a distribuição soma-o como moeda do cliente.
-  const foreign = ctx.sources.filter((s) => PAID.includes(s.platform) && s.currency !== client.currency);
-  if (foreign.length) return { ok: false, reason: `Conta(s) de anúncios noutra moeda (${[...new Set(foreign.map((s) => s.currency))].join(", ")}): a distribuição exige a mesma moeda do cliente (${client.currency}).` };
-
   const asOf = dataUntil(ctx, platforms, addDays(today, -1));
   const base = { clientId: client.id, clientCurrency: client.currency, platforms };
   const w30 = { start: addDays(asOf, -29), end: asOf };
@@ -44,10 +41,19 @@ export async function loadAllocation(client: Client, ctx: ClientContext, now = n
     queryPaid({ ...base, ...w30, groupBy: "adGroup" }),
     queryPaid({ ...base, ...w14, groupBy: "adGroup" }),
     prisma.goal.findMany({ where: { clientId: client.id, platform: null, periodStart: { lte: new Date(`${today}T00:00:00Z`) }, periodEnd: { gte: new Date(`${today}T00:00:00Z`) } } }),
-    prisma.campaign.findMany({ where: { clientId: client.id, platform: { in: platforms }, dataSource: { status: { not: "DISCONNECTED" } } }, include: { adGroups: true } }),
+    prisma.campaign.findMany({ where: { clientId: client.id, platform: { in: platforms }, dataSource: { status: { not: "DISCONNECTED" } } }, include: { adGroups: true, dataSource: { select: { currency: true } } } }),
   ]);
   const warnings = [...new Set([...daily.warnings, ...c30.warnings, ...c14.warnings])];
-  if (warnings.length) return { ok: false, reason: warnings.join(" · ") };
+  // Avisos de conversão cambial do queryPaid são informativos; só os de exclusão impedem a distribuição.
+  const blocking = warnings.filter((w) => !w.includes("convertidos"));
+  if (blocking.length) return { ok: false, reason: blocking.join(" · ") };
+  // Campaign.dailyBudget está na moeda da conta; a distribuição soma em moeda do cliente e createDraft (source ALLOCATION) converte a proposta de volta.
+  const foreignCurrencies = [...new Set(campaigns.map((c) => c.dataSource.currency).filter((cur) => cur !== client.currency))];
+  const fx = foreignCurrencies.length ? await loadRates(asOf) : null;
+  for (const cur of foreignCurrencies) {
+    if (convertAmount(1, cur, client.currency, fx!) === null) return { ok: false, reason: `Sem taxa de câmbio ${cur}→${client.currency} registada: não é possível distribuir orçamentos da conta em ${cur}.` };
+  }
+  const toClient = (amount: number, cur: string) => (cur === client.currency ? amount : convertAmount(amount, cur, client.currency, fx!)!);
   const pacing = computePacing({ amount: period.amount, periodStart: period.start, periodEnd: period.end, asOf, daily: daily.rows.map((r) => ({ date: r.key, cost: r.totals.cost })) });
   // Dias por gastar contados a partir do dia seguinte aos dados (o gasto só é conhecido até asOf).
   const daysLeft = Math.max(1, dayCount(addDays(asOf, 1), period.end));
@@ -74,7 +80,8 @@ export async function loadAllocation(client: Client, ctx: ClientContext, now = n
   const entities: AllocEntity[] = [];
   for (const c of campaigns.filter((x) => isActive(x.status))) {
     const raw = c.raw as Raw;
-    const budgetEntity = { platform: c.platform, level: "CAMPAIGN" as const, dailyBudget: c.dailyBudget === null ? null : Number(c.dailyBudget), shared: Boolean(raw?.budgetShared), metaBudgetLevel: (raw?.budgetLevel as string) ?? null, lifetime: raw?.budgetLevel === "CAMPAIGN_LIFETIME" };
+    const cur = c.dataSource.currency;
+    const budgetEntity = { platform: c.platform, level: "CAMPAIGN" as const, dailyBudget: c.dailyBudget === null ? null : toClient(Number(c.dailyBudget), cur), shared: Boolean(raw?.budgetShared), metaBudgetLevel: (raw?.budgetLevel as string) ?? null, lifetime: raw?.budgetLevel === "CAMPAIGN_LIFETIME" };
     const block = budgetBlockReason(budgetEntity);
     const key = `${c.platform}|${c.externalId}`;
     if (!block) {
@@ -84,13 +91,15 @@ export async function loadAllocation(client: Client, ctx: ClientContext, now = n
     const adsets = c.platform === "META_ADS" && budgetEntity.metaBudgetLevel === "ADSET" ? c.adGroups.filter((g) => isActive(g.status) && g.dailyBudget !== null && Number(g.dailyBudget) > 0) : [];
     for (const g of adsets) {
       const gk = `${c.platform}|${g.externalId}`;
-      const gb = budgetBlockReason({ platform: c.platform, level: "AD_GROUP", dailyBudget: Number(g.dailyBudget), lifetime: Boolean((g.raw as Raw)?.lifetimeBudget) });
-      entities.push({ key: `G:${g.id}`, level: "AD_GROUP", entityId: g.id, name: `${c.name} › ${g.name}`, platform: c.platform, dailyBudget: Number(g.dailyBudget), adjustable: !gb, blockReason: gb, ...metrics(a30.get(gk), a14.get(gk)) });
+      const gBudget = toClient(Number(g.dailyBudget), cur);
+      const gb = budgetBlockReason({ platform: c.platform, level: "AD_GROUP", dailyBudget: gBudget, lifetime: Boolean((g.raw as Raw)?.lifetimeBudget) });
+      entities.push({ key: `G:${g.id}`, level: "AD_GROUP", entityId: g.id, name: `${c.name} › ${g.name}`, platform: c.platform, dailyBudget: gBudget, adjustable: !gb, blockReason: gb, ...metrics(a30.get(gk), a14.get(gk)) });
     }
     if (!adsets.length && budgetEntity.dailyBudget) entities.push({ key: `C:${c.id}`, level: "CAMPAIGN", entityId: c.id, name: c.name, platform: c.platform, dailyBudget: budgetEntity.dailyBudget, adjustable: false, blockReason: block, ...metrics(m30.get(key), m14.get(key)) });
   }
   if (!entities.length) return { ok: false, reason: "Nenhuma campanha ativa com orçamento diário." };
 
   const result = allocateBudget({ monthlyTotal: period.amount, spentToDate: pacing.spent, daysLeft, goal: { kind, target: goalTarget }, maxStepPct: Number(client.maxBudgetStepPct), entities });
+  result.warnings.push(...warnings.filter((w) => !blocking.includes(w)));
   return { ok: true, result, period: { ...period, spent: pacing.spent, daysLeft }, asOf };
 }

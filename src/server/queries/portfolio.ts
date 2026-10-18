@@ -60,8 +60,8 @@ export async function loadPortfolio(clients: Client[]): Promise<PortfolioRow[]> 
         lastSync: ctx.lastSync,
         sourceErrors: ctx.sources.filter((s) => s.status === "ERROR" || s.lastError).length,
         period: { start, end },
-        // Período sem dados → null ("Não disponível"), nunca 0.
-        cost: delta(pc?.hasData ? pc.totals.cost : null, pp?.hasData ? pp.totals.cost : null),
+        // Período sem dados → null ("Não disponível"), nunca 0. Plataforma sem taxa de câmbio → investimento incompleto → null.
+        cost: delta(pc?.hasData && !pc.excludedPlatforms.length ? pc.totals.cost : null, pp?.hasData && !pp.excludedPlatforms.length ? pp.totals.cost : null),
         conversions: delta(pc?.hasData ? pc.totals.conversions : null, pp?.hasData ? pp.totals.conversions : null),
         conversionValue: delta(pc?.hasData ? pc.totals.conversionValue : null, pp?.hasData ? pp.totals.conversionValue : null),
         roas: delta(pc?.hasData ? pc.derived.roas : null, pp?.hasData ? pp.derived.roas : null),

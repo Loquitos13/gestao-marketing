@@ -25,7 +25,10 @@ export function safeInternalPath(p: string | undefined, fallback: string): strin
   }
 }
 
-/** IP do cliente: último salto de X-Forwarded-For (o único escrito pelo nosso proxy; os anteriores são controláveis pelo cliente). */
+/**
+ * IP do cliente: X-Real-IP (definido pelo proxy) ou o último salto de X-Forwarded-For (o único escrito pelo nosso
+ * proxy; os anteriores são controláveis pelo cliente). Sem proxy, todos os pedidos partilham a chave "local".
+ */
 export function clientIp(h: Headers): string {
-  return h.get("x-forwarded-for")?.split(",").pop()?.trim() || "local";
+  return h.get("x-real-ip")?.trim() || h.get("x-forwarded-for")?.split(",").pop()?.trim() || "local";
 }

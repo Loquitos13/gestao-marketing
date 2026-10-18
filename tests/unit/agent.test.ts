@@ -112,6 +112,12 @@ describe("verificação de números", () => {
     expect(verifyNumbers("ROAS de 6,44, investimento de 11.036,69 € (≈ 11.037 €), CTR 1,46% e CPA 11", tools).unverified).toEqual([]);
     expect(verifyNumbers("Proponho 5.000 €/dia e ROAS 9,1", tools).unverified).toEqual(["5.000", "9,1"]);
   });
+  it("só escala ×100 valores sob chaves de rácio; contagens e dinheiro valem tal como estão", () => {
+    expect(verifyNumbers("Multiplicador 3,2× e 32%", [{ clicks: 320 }]).unverified).toEqual(["3,2", "32"]);
+    expect(verifyNumbers("ROAS 3,2×", [{ roas: 3.17 }]).unverified).toEqual([]);
+    expect(verifyNumbers("CTR 3,2%", [{ ctr: 0.0321 }]).unverified).toEqual([]);
+    expect(verifyNumbers("Custo 1 234,50 € ou 1234", [{ cost: 1234.5 }]).unverified).toEqual([]);
+  });
 });
 
 describe("dados não confiáveis", () => {

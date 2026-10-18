@@ -103,7 +103,7 @@ export const proposeAdChange = defineTool({
       level: { type: "string", enum: ["CAMPAIGN", "AD_GROUP", "AD"] },
       entityId: { type: "string", description: "id interno (de get_campaigns ou get_ads)" },
       status: { type: "string", enum: ["ACTIVE", "PAUSED"] },
-      dailyBudget: { type: "number", description: "Novo orçamento diário na moeda da conta de anúncios (DataSource.currency), não na do cliente" },
+      dailyBudget: { type: "number", description: "Novo orçamento diário na moeda do cliente; o servidor converte para a moeda da conta de anúncios" },
       reason: { type: "string", description: "Justificação com números" },
     },
     required: ["operation", "level", "entityId", "reason"],
@@ -140,6 +140,7 @@ export const proposeAdChange = defineTool({
         operation: a.operation,
         desiredStatus: a.status,
         dailyBudget: a.dailyBudget,
+        currency: ctx.client.currency,
         reason: `Agente IA: ${a.reason}`,
         source: "AGENT",
       });

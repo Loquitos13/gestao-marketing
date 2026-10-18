@@ -1,4 +1,4 @@
-import type { DataSource, Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, type DataSource, type PrismaClient } from "@prisma/client";
 import { toDate } from "@/lib/dates";
 import type { EntityBatch, SyncResult } from "@/server/integrations/types";
 
@@ -9,45 +9,61 @@ export function dedupe<T>(rows: T[], key: (r: T) => string): T[] {
   return [...m.values()];
 }
 
-async function writeEntities(db: PrismaClient, ds: DataSource, e: EntityBatch) {
-  const campaignIds = new Map<string, string>();
-  for (const c of e.campaigns) {
-    const data = { name: c.name, status: c.status, objective: c.objective, campaignType: c.campaignType, biddingStrategy: c.biddingStrategy, dailyBudget: c.dailyBudget, raw: c.raw as Prisma.InputJsonValue | undefined };
-    const row = await db.campaign.upsert({
-      where: { dataSourceId_externalId: { dataSourceId: ds.id, externalId: c.externalId } },
-      update: data,
-      create: { clientId: ds.clientId, dataSourceId: ds.id, platform: ds.platform, externalId: c.externalId, ...data },
-    });
-    campaignIds.set(c.externalId, row.id);
-  }
-  const adGroupIds = new Map<string, string>();
-  for (const g of e.adGroups) {
-    const campaignId = campaignIds.get(g.campaignExternalId);
-    if (!campaignId) continue;
-    const data = { name: g.name, status: g.status, dailyBudget: g.dailyBudget ?? null, raw: g.raw as Prisma.InputJsonValue | undefined };
-    const row = await db.adGroup.upsert({
-      where: { campaignId_externalId: { campaignId, externalId: g.externalId } },
-      update: data,
-      create: { campaignId, externalId: g.externalId, ...data },
-    });
-    adGroupIds.set(g.externalId, row.id);
-  }
-  for (const a of e.ads) {
-    const adGroupId = adGroupIds.get(a.adGroupExternalId);
-    if (!adGroupId) continue;
-    let creativeId: string | null = null;
-    if (a.creative) {
-      const { externalId, ...rest } = a.creative;
-      const cr = await db.creative.upsert({
-        where: { dataSourceId_externalId: { dataSourceId: ds.id, externalId } },
-        update: rest,
-        create: { dataSourceId: ds.id, externalId, ...rest },
-      });
-      creativeId = cr.id;
+/** Forma canónica para comparar BD vs conector: Decimal→número, chaves de JSON ordenadas (o jsonb reordena-as). */
+const canon = (v: unknown) =>
+  JSON.stringify(Prisma.Decimal.isDecimal(v) ? Number(v) : (v ?? null), (_, x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort()) : x));
+
+type Delegate = { findMany(a: object): Promise<Record<string, unknown>[]>; createManyAndReturn(a: object): Promise<{ id: string; externalId: string }[]>; update(a: object): Prisma.PrismaPromise<unknown> };
+type Row = { parentId: string; externalId: string; create?: object; data: Record<string, unknown> };
+
+/**
+ * Escreve um nível (campanhas, conjuntos, criativos ou anúncios) em lote: 1 findMany das linhas da fonte,
+ * 1 createManyAndReturn das novas e 1 transação só com os updates das que mudaram. Devolve externalId → id.
+ */
+async function syncLevel(db: PrismaClient, model: object, parentField: string, where: object, rows: Row[]) {
+  const ids = new Map<string, string>();
+  if (!rows.length) return ids;
+  const m = model as Delegate; // os delegates do Prisma são genéricos demais para tipar aqui
+  const fields = [...new Set(rows.flatMap((r) => Object.keys(r.data)))];
+  const select = Object.fromEntries(["id", "externalId", parentField, ...fields].map((f) => [f, true]));
+  const existing = new Map((await m.findMany({ where, select })).map((r) => [`${r[parentField]}|${r.externalId}`, r]));
+  const creates: object[] = [];
+  const updates: Prisma.PrismaPromise<unknown>[] = [];
+  for (const r of rows) {
+    const ex = existing.get(`${r.parentId}|${r.externalId}`);
+    if (!ex) {
+      creates.push({ [parentField]: r.parentId, externalId: r.externalId, ...r.create, ...r.data });
+      continue;
     }
-    const data = { name: a.name, status: a.status, adType: a.adType, finalUrl: a.finalUrl, headlines: a.headlines ?? [], descriptions: a.descriptions ?? [], createdTime: a.createdTime ?? null, creativeId };
-    await db.ad.upsert({ where: { adGroupId_externalId: { adGroupId, externalId: a.externalId } }, update: data, create: { adGroupId, externalId: a.externalId, ...data } });
+    ids.set(r.externalId, ex.id as string);
+    // undefined não é escrito pelo Prisma, por isso também não conta como alteração
+    if (fields.some((f) => r.data[f] !== undefined && canon(ex[f]) !== canon(r.data[f]))) updates.push(m.update({ where: { id: ex.id }, data: r.data }));
   }
+  if (updates.length) await db.$transaction(updates);
+  if (creates.length) for (const c of await m.createManyAndReturn({ data: creates, select: { id: true, externalId: true }, skipDuplicates: true })) ids.set(c.externalId, c.id);
+  return ids;
+}
+
+async function writeEntities(db: PrismaClient, ds: DataSource, e: EntityBatch) {
+  const src = { dataSourceId: ds.id };
+  const campaignIds = await syncLevel(db, db.campaign, "dataSourceId", src, e.campaigns.map((c) => ({
+    parentId: ds.id, externalId: c.externalId, create: { clientId: ds.clientId, platform: ds.platform },
+    data: { name: c.name, status: c.status, objective: c.objective, campaignType: c.campaignType, biddingStrategy: c.biddingStrategy, dailyBudget: c.dailyBudget, raw: c.raw as Prisma.InputJsonValue | undefined },
+  })));
+  const adGroupIds = await syncLevel(db, db.adGroup, "campaignId", { campaign: src }, e.adGroups.filter((g) => campaignIds.has(g.campaignExternalId)).map((g) => ({
+    parentId: campaignIds.get(g.campaignExternalId)!, externalId: g.externalId,
+    data: { name: g.name, status: g.status, dailyBudget: g.dailyBudget ?? null, raw: g.raw as Prisma.InputJsonValue | undefined },
+  })));
+  const ads = e.ads.filter((a) => adGroupIds.has(a.adGroupExternalId));
+  const creativeIds = await syncLevel(db, db.creative, "dataSourceId", src, ads.flatMap((a) => {
+    if (!a.creative) return [];
+    const { externalId, ...rest } = a.creative;
+    return [{ parentId: ds.id, externalId, data: rest }];
+  }));
+  await syncLevel(db, db.ad, "adGroupId", { adGroup: { campaign: src } }, ads.map((a) => ({
+    parentId: adGroupIds.get(a.adGroupExternalId)!, externalId: a.externalId,
+    data: { name: a.name, status: a.status, adType: a.adType, finalUrl: a.finalUrl, headlines: a.headlines ?? [], descriptions: a.descriptions ?? [], createdTime: a.createdTime ?? null, creativeId: a.creative ? (creativeIds.get(a.creative.externalId) ?? null) : null },
+  })));
 }
 
 /**

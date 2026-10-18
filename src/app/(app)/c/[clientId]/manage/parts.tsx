@@ -44,7 +44,9 @@ export function describeChange(c: Pick<AdChange, "operation" | "before" | "after
   const a = (c.after ?? {}) as State;
   if (c.operation === "SET_DAILY_BUDGET") {
     const pct = b.dailyBudget && a.dailyBudget ? (a.dailyBudget - b.dailyBudget) / b.dailyBudget : null;
-    return { before: `${formatValue(b.dailyBudget ?? null, "currency", fmt)}/dia`, after: `${formatValue(a.dailyBudget ?? null, "currency", fmt)}/dia`, delta: pct === null ? null : `${pct > 0 ? "+" : ""}${(pct * 100).toFixed(0)}%` };
+    // Orçamentos ficam na moeda da conta de anúncios; registos antigos sem `currency` usam a do cliente.
+    const f = { ...fmt, currency: (a as { currency?: string }).currency ?? (b as { currency?: string }).currency ?? fmt.currency };
+    return { before: `${formatValue(b.dailyBudget ?? null, "currency", f)}/dia`, after: `${formatValue(a.dailyBudget ?? null, "currency", f)}/dia`, delta: pct === null ? null : `${pct > 0 ? "+" : ""}${(pct * 100).toFixed(0)}%` };
   }
   if (c.operation === "SET_STATUS") return { before: STATUS_LABEL[String(b.status)] ?? String(b.status ?? "—"), after: STATUS_LABEL[String(a.status)] ?? String(a.status ?? "—"), delta: null };
   return { before: String((b as { summary?: string }).summary ?? "—"), after: String((a as { summary?: string }).summary ?? "—"), delta: null };

@@ -53,7 +53,7 @@ Com `SEED_DEMO=true`, o seed cria três clientes fictícios: **Loja Atlântico (
 ## Princípios
 
 - Apenas APIs oficiais. Sem scraping.
-- Nenhuma alteração é feita nas plataformas de anúncios: a aplicação só lê dados. Recomendações são propostas que exigem decisão humana.
+- Por omissão a aplicação só lê dados. Alterações nas plataformas (orçamentos, estados, anúncios, palavras-chave) só acontecem com a gestão ativada para o cliente e depois de cada proposta ser confirmada por um utilizador; nunca são aplicadas pela IA nem por regras.
 - Tokens OAuth encriptados (AES-256-GCM) no servidor; nunca chegam ao browser, ao repositório nem aos relatórios.
 - Métricas em falta aparecem como «Não disponível». Nada é inventado, e métricas incompatíveis ou de moedas diferentes não são somadas.
 - Datas guardadas em UTC e apresentadas no fuso horário do cliente.

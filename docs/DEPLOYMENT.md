@@ -32,7 +32,7 @@ Antes de expor publicamente:
 
 ## Escala
 
-O rate limiting é em memória e assume uma instância da aplicação. Várias instâncias exigem mover o rate limiter para Redis. Podem correr vários workers; os jobs recorrentes são registados de forma idempotente (`upsertJobScheduler`).
+O rate limiting usa o Redis quando `REDIS_URL` está definido, por isso várias instâncias da aplicação partilham os limites; sem Redis fica em memória e assume uma instância. O IP do cliente é lido de `X-Real-IP` ou do último valor de `X-Forwarded-For`: o proxy tem de definir um deles, senão todos os pedidos partilham o mesmo limite. Podem correr vários workers; os jobs recorrentes são registados de forma idempotente (`upsertJobScheduler`).
 
 ## CI (GitHub Actions)
 

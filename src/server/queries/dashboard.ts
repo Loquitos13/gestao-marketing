@@ -216,6 +216,8 @@ export async function loadDashboard(ctx: ClientContext, f: Filters) {
     positionSeries,
     topAdKeys: top.map((r) => ({ key: r.key, platform: r.platform!, campaign: r.campaignExternalId!, totals: r.totals, derived: r.derived })),
     topQueries: queries.slice(0, 8),
+    // Plataformas sem taxa de câmbio: ausentes dos gráficos, da repartição por canal e das séries de investimento.
+    excludedPlatforms: pCur.excludedPlatforms,
     warnings: [...pCur.warnings, ...(pCur.breakdownMode ? ["Filtro de dispositivo/país ativo: alcance, cliques no link e métricas de vídeo não estão disponíveis nesta repartição."] : [])],
     completeness: ctx.completenessWarning(showSeo ? [...platforms, "SEARCH_CONSOLE", "GA4"] : platforms, cur.end),
   };

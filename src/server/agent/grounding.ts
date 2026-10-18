@@ -36,16 +36,20 @@ export function extractNumbers(text: string): CitedNumber[] {
   return out;
 }
 
-/** Todos os números presentes nos resultados (recursivo), com as variantes de percentagem. */
-export function collectNumbers(data: unknown, acc: number[] = []): number[] {
+// Chaves de rácios/taxas: só estas podem ser citadas como fração ou como percentagem (×100).
+const RATIO_KEY_RE = /ctr|cvr|roas|pct|rate|taxa|share|quota|delta|varia/i;
+
+/** Todos os números presentes nos resultados (recursivo); valores sob chave de rácio também valem ×100. */
+export function collectNumbers(data: unknown, acc: number[] = [], ratio = false): number[] {
   if (typeof data === "number" && Number.isFinite(data)) {
-    acc.push(data, data * 100, data / 100);
+    acc.push(data);
+    if (ratio) acc.push(data * 100);
   } else if (typeof data === "string") {
     for (const c of extractNumbers(data)) acc.push(c.value);
   } else if (Array.isArray(data)) {
-    for (const x of data) collectNumbers(x, acc);
+    for (const x of data) collectNumbers(x, acc, ratio);
   } else if (data && typeof data === "object") {
-    for (const v of Object.values(data)) collectNumbers(v, acc);
+    for (const [k, v] of Object.entries(data)) collectNumbers(v, acc, ratio || RATIO_KEY_RE.test(k));
   }
   return acc;
 }
