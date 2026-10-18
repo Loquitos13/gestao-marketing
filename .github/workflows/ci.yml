@@ -70,7 +70,7 @@ jobs:
           npx playwright test
         env:
           NODE_ENV: production
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report
