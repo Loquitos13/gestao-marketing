@@ -6,7 +6,7 @@ const PUBLIC = [/^\/login/, /^\/share\//, /^\/api\/health/, /^\/api\/share\//, /
  * Verificação rápida da presença do cookie de sessão (a validação real é feita no servidor
  * em cada página/ação). Protege também contra CSRF em pedidos que alteram estado nas rotas API.
  */
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   if (PUBLIC.some((r) => r.test(pathname))) return NextResponse.next();
 
