@@ -21,9 +21,10 @@ export type SettingKey =
   | "OLLAMA_URL"
   | "AGENT_MODEL"
   | "PAGESPEED_API_KEY"
-  | "FX_AUTO_ECB";
+  | "FX_AUTO_ECB"
+  | "BACKUP_COPY_DIR";
 
-export type SettingGroupKey = "app" | "google" | "meta" | "semrush" | "smtp" | "redis" | "agent" | "pagespeed" | "fx";
+export type SettingGroupKey = "app" | "google" | "meta" | "semrush" | "smtp" | "redis" | "agent" | "pagespeed" | "fx" | "backup";
 
 /** O modelo de linguagem tem de correr nesta máquina ou na rede local: nenhum dado sai do servidor. */
 export function isLocalUrl(v: string): boolean {
@@ -145,6 +146,13 @@ export const SETTING_GROUPS: SettingGroup[] = [
     description: "Importação diária (16:30 UTC) das taxas de referência do Banco Central Europeu, sem chave. As taxas registadas manualmente em Definições prevalecem.",
     testable: true,
     fields: [{ key: "FX_AUTO_ECB", label: "Importação automática", placeholder: "true", hint: "true liga, false desliga. Precisa do worker a correr.", schema: text(5).transform((v) => v.toLowerCase()).pipe(z.enum(["true", "false"])) }],
+  },
+  {
+    key: "backup",
+    label: "Cópia de segurança",
+    description: "Segunda localização para as cópias do Postgres criadas por npm run db:backup (outro disco ou unidade de rede). Nessa pasta, as cópias com mais de 30 dias são apagadas.",
+    testable: true,
+    fields: [{ key: "BACKUP_COPY_DIR", label: "Pasta da segunda cópia", placeholder: "D:\\backups\\mih", hint: "Pasta local ou unidade de rede montada, vista pelo computador que corre db:backup. Vazio desliga.", schema: text(260).refine((v) => !v.split(/[\\/]/).includes(".."), "Não pode conter segmentos ..") }],
   },
 ];
 

@@ -1,3 +1,5 @@
+import { stat, unlink, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { Redis, type RedisOptions } from "ioredis";
 import { smtpTransport } from "@/server/notify/email";
 import { redisConnection } from "@/server/sync/queue";
@@ -100,7 +102,18 @@ async function checkFx(): Promise<CheckResult> {
   return { ok: true, message: `BCE respondeu: ${Object.keys(r.rates).length} moedas com data ${r.date}.` };
 }
 
-const CHECKS: Partial<Record<SettingGroupKey, (c: Config) => Promise<CheckResult>>> = { google: checkGoogle, meta: checkMeta, semrush: checkSemrush, smtp: checkSmtp, redis: checkRedis, agent: checkAgent, pagespeed: checkPagespeed, fx: checkFx };
+/** Escreve e apaga um ficheiro temporário: prova que a pasta existe e aceita escrita a partir deste processo. */
+async function checkBackup(c: Config): Promise<CheckResult> {
+  if (!c.BACKUP_COPY_DIR) return { ok: false, message: "Falta a pasta da segunda cópia." };
+  const s = await stat(c.BACKUP_COPY_DIR).catch(() => null);
+  if (!s?.isDirectory()) return { ok: false, message: `A pasta não existe ou não é uma pasta: ${c.BACKUP_COPY_DIR}` };
+  const probe = join(c.BACKUP_COPY_DIR, `.mih-teste-escrita-${Date.now()}`);
+  await writeFile(probe, "ok");
+  await unlink(probe);
+  return { ok: true, message: `A pasta ${c.BACKUP_COPY_DIR} existe e aceita escrita. Nenhuma cópia foi criada.` };
+}
+
+const CHECKS: Partial<Record<SettingGroupKey, (c: Config) => Promise<CheckResult>>> = { google: checkGoogle, meta: checkMeta, semrush: checkSemrush, smtp: checkSmtp, redis: checkRedis, agent: checkAgent, pagespeed: checkPagespeed, fx: checkFx, backup: checkBackup };
 
 export async function checkGroup(group: SettingGroupKey): Promise<CheckResult> {
   const fn = CHECKS[group];

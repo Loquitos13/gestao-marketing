@@ -141,3 +141,10 @@ textarea {
     break-inside: avoid;
   }
 }
+
+/* Em ecrãs pequenos, filhos de grelhas não podem alargar a coluna além do ecrã (tabelas largas, gráficos). */
+@media (max-width: 767px) {
+  .grid > * {
+    min-width: 0;
+  }
+}

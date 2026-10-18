@@ -54,4 +54,4 @@ export const n = (x: number | null | undefined, digits = 2) => (x === null || x 
 export const pct = (cur: number | null, prev: number | null) => (cur === null || prev === null || prev === 0 ? null : r2(((cur - prev) / Math.abs(prev)) * 100));
 
 export const DAYS = [7, 14, 30, 90] as const;
-export const daysParam = { type: "integer", enum: [...DAYS], description: "Janela em dias até ao último dia com dados (7, 14, 30 ou 90). Por omissão 30." };
+export const daysParam = { type: "integer", description: "Janela em dias até ao último dia com dados; ajustada a 7, 14, 30 ou 90. Por omissão 30." };

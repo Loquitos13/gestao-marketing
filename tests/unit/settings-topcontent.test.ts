@@ -58,6 +58,9 @@ describe("configuração editável", () => {
     expect(f("SMTP_FROM").safeParse("Relatórios <r@agencia.pt>").success).toBe(true);
     expect(f("SMTP_HOST").safeParse("smtp.x.pt\r\nRCPT").success).toBe(false);
     expect(f("APP_URL").parse("https://hub.agencia.pt/")).toBe("https://hub.agencia.pt");
+    expect(f("BACKUP_COPY_DIR").safeParse("D:\\backups\\mih").success).toBe(true);
+    expect(f("BACKUP_COPY_DIR").safeParse("D:\\backups\\..\\mih").success).toBe(false);
+    expect(f("BACKUP_COPY_DIR").safeParse("D:\\backups\nX").success).toBe(false);
     expect(settingGroup("google")?.fields.filter((x) => x.secret).map((x) => x.key)).toEqual(["GOOGLE_CLIENT_SECRET", "GOOGLE_ADS_DEVELOPER_TOKEN"]);
   });
 });

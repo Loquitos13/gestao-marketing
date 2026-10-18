@@ -38,7 +38,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         showJobs={showJobs}
         logoutAction={logout}
       />
-      <main className="min-w-0 flex-1">
+      <main className="min-w-0 flex-1 max-md:pt-11">
         {workerDown && (
           <div className="border-b bg-warn-soft px-6 py-2 text-xs text-warn">
             O worker não está a correr. Sincronizações, relatórios agendados e análises ficam na fila até iniciar <span className="font-mono">npm run worker</span>.

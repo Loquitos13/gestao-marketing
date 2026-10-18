@@ -1,22 +1,198 @@
 [
-  { "question": "Quanto investimos em anúncios pagos nos últimos 30 dias?", "mustInclude": ["€|EUR"], "mustNotInclude": ["USD", "dólar"], "tool": "get_kpis" },
-  { "question": "Qual foi o ROAS global dos últimos 30 dias?", "mustInclude": ["ROAS"], "mustNotInclude": ["USD"], "tool": "get_kpis" },
-  { "question": "Quantas conversões tivemos nos últimos 7 dias e qual o CPA?", "mustInclude": ["convers", "€|EUR"], "mustNotInclude": ["USD"], "tool": "get_kpis" },
-  { "question": "Em que moeda são reportados os valores deste cliente?", "mustInclude": ["EUR|euro"], "mustNotInclude": ["USD", "dólar", "libra"], "tool": "get_kpis" },
-  { "question": "Qual é o custo por clique médio no Google Ads nos últimos 30 dias?", "mustInclude": ["€|EUR"], "mustNotInclude": ["$", "USD"], "tool": "get_kpis" },
-  { "question": "Quais são as campanhas ativas no Google Ads?", "mustInclude": ["Marca", "Performance Max"], "mustNotInclude": ["LinkedIn", "TikTok", "Bing"], "tool": "get_campaigns" },
-  { "question": "Lista as campanhas do Meta Ads com o orçamento diário de cada uma.", "mustInclude": ["Lookalike", "Remarketing Catálogo"], "mustNotInclude": ["Performance Max", "Pesquisa | Marca"], "tool": "get_campaigns" },
-  { "question": "Temos campanhas no LinkedIn Ads ou no TikTok Ads?", "mustInclude": ["não|nao"], "mustNotInclude": [], "tool": "get_campaigns" },
-  { "question": "Qual é a campanha com mais conversões nos últimos 14 dias?", "mustInclude": ["Marca|Vestidos|Performance Max|Remarketing|Lookalike"], "mustNotInclude": ["USD"], "tool": "get_campaigns" },
-  { "question": "A campanha Pesquisa | Vestidos & Casacos está limitada pelo orçamento?", "mustInclude": ["orçamento", "Vestidos"], "mustNotInclude": [], "tool": "get_campaigns" },
-  { "question": "Qual o CPA médio das campanhas Meta Ads nos últimos 14 dias?", "mustInclude": ["€|EUR"], "mustNotInclude": ["USD"], "tool": "get_campaigns" },
-  { "question": "Quais são os anúncios da campanha Vendas | Prospecção Lookalike e como estão a correr?", "mustInclude": ["Outono|Best-sellers|Linho"], "mustNotInclude": [], "tool": "get_ads" },
-  { "question": "Que anúncio tem melhor CTR na campanha Pesquisa | Marca?", "mustInclude": ["RSA Marca"], "mustNotInclude": [], "tool": "get_ads" },
-  { "question": "Qual é o orçamento mensal do cliente e quanto já gastámos este mês?", "mustInclude": ["10.500|10 500|10500|10,500"], "mustNotInclude": ["USD"], "tool": "get_budget_pacing" },
-  { "question": "Estamos a gastar acima ou abaixo do ritmo previsto para o mês?", "mustInclude": ["€|EUR"], "mustNotInclude": ["USD"], "tool": "get_budget_pacing" },
-  { "question": "Como está a evoluir o tráfego orgânico no Search Console nos últimos 28 dias?", "mustInclude": ["clique|impress"], "mustNotInclude": [], "tool": "get_seo" },
-  { "question": "Que consultas orgânicas trazem mais cliques ao site?", "mustInclude": ["linho|atlantico|atlântico"], "mustNotInclude": [], "tool": "get_seo" },
-  { "question": "Há alertas abertos ou recomendações pendentes para este cliente?", "mustInclude": [], "mustNotInclude": ["USD"], "tool": "get_alerts_recommendations" },
-  { "question": "Qual é a previsão de investimento total para os próximos 30 dias?", "mustInclude": ["€|EUR"], "mustNotInclude": ["USD"], "tool": "get_forecast" },
-  { "question": "O que aconteceria às conversões se aumentássemos 20% o orçamento da campanha Performance Max | Catálogo?", "mustInclude": ["Performance Max", "convers"], "mustNotInclude": [], "tool": "get_response_curve" }
+  {
+    "question": "Quanto investimos em anúncios pagos nos últimos 30 dias?",
+    "mustInclude": [
+      "€|EUR"
+    ],
+    "mustNotInclude": [
+      "USD",
+      "dólar"
+    ],
+    "tool": "get_kpis"
+  },
+  {
+    "question": "Qual foi o ROAS global dos últimos 30 dias?",
+    "mustInclude": [
+      "ROAS"
+    ],
+    "mustNotInclude": [
+      "USD"
+    ],
+    "tool": "get_kpis"
+  },
+  {
+    "question": "Quantas conversões tivemos nos últimos 7 dias e qual o CPA?",
+    "mustInclude": [
+      "convers",
+      "€|EUR"
+    ],
+    "mustNotInclude": [
+      "USD"
+    ],
+    "tool": "get_kpis"
+  },
+  {
+    "question": "Em que moeda são reportados os valores deste cliente?",
+    "mustInclude": [
+      "EUR|euro"
+    ],
+    "mustNotInclude": [
+      "USD",
+      "dólar",
+      "libra"
+    ],
+    "tool": ""
+  },
+  {
+    "question": "Qual é o custo por clique médio no Google Ads nos últimos 30 dias?",
+    "mustInclude": [
+      "€|EUR"
+    ],
+    "mustNotInclude": [
+      "$",
+      "USD"
+    ],
+    "tool": "get_kpis"
+  },
+  {
+    "question": "Quais são as campanhas ativas no Google Ads?",
+    "mustInclude": [
+      "Marca",
+      "Performance Max"
+    ],
+    "mustNotInclude": [
+      "LinkedIn",
+      "TikTok",
+      "Bing"
+    ],
+    "tool": "get_campaigns"
+  },
+  {
+    "question": "Lista as campanhas do Meta Ads com o orçamento diário de cada uma.",
+    "mustInclude": [
+      "Lookalike",
+      "Remarketing Catálogo"
+    ],
+    "mustNotInclude": [
+      "Performance Max",
+      "Pesquisa | Marca"
+    ],
+    "tool": "get_campaigns"
+  },
+  {
+    "question": "Temos campanhas no LinkedIn Ads ou no TikTok Ads?",
+    "mustInclude": [
+      "não|nao"
+    ],
+    "mustNotInclude": [],
+    "tool": ""
+  },
+  {
+    "question": "Qual é a campanha com mais conversões nos últimos 14 dias?",
+    "mustInclude": [
+      "Marca|Vestidos|Performance Max|Remarketing|Lookalike"
+    ],
+    "mustNotInclude": [
+      "USD"
+    ],
+    "tool": "get_campaigns"
+  },
+  {
+    "question": "A campanha Pesquisa | Vestidos & Casacos está limitada pelo orçamento?",
+    "mustInclude": [
+      "orçamento",
+      "Vestidos"
+    ],
+    "mustNotInclude": [],
+    "tool": "get_campaigns"
+  },
+  {
+    "question": "Qual o CPA médio das campanhas Meta Ads nos últimos 14 dias?",
+    "mustInclude": [
+      "€|EUR"
+    ],
+    "mustNotInclude": [
+      "USD"
+    ],
+    "tool": "get_kpis|get_campaigns"
+  },
+  {
+    "question": "Quais são os anúncios da campanha Vendas | Prospecção Lookalike e como estão a correr?",
+    "mustInclude": [
+      "Outono|Best-sellers|Linho"
+    ],
+    "mustNotInclude": [],
+    "tool": "get_ads"
+  },
+  {
+    "question": "Que anúncio tem melhor CTR na campanha Pesquisa | Marca?",
+    "mustInclude": [
+      "RSA Marca"
+    ],
+    "mustNotInclude": [],
+    "tool": "get_ads"
+  },
+  {
+    "question": "Qual é o orçamento mensal do cliente e quanto já gastámos este mês?",
+    "mustInclude": [
+      "10.500|10 500|10500|10,500"
+    ],
+    "mustNotInclude": [
+      "USD"
+    ],
+    "tool": "get_budget_pacing"
+  },
+  {
+    "question": "Estamos a gastar acima ou abaixo do ritmo previsto para o mês?",
+    "mustInclude": [
+      "€|EUR"
+    ],
+    "mustNotInclude": [
+      "USD"
+    ],
+    "tool": "get_budget_pacing"
+  },
+  {
+    "question": "Como está a evoluir o tráfego orgânico no Search Console nos últimos 28 dias?",
+    "mustInclude": [
+      "clique|impress|tráfego|trafego"
+    ],
+    "mustNotInclude": [],
+    "tool": "get_seo"
+  },
+  {
+    "question": "Que consultas orgânicas trazem mais cliques ao site?",
+    "mustInclude": [
+      "linho|atlantico|atlântico"
+    ],
+    "mustNotInclude": [],
+    "tool": "get_seo"
+  },
+  {
+    "question": "Há alertas abertos ou recomendações pendentes para este cliente?",
+    "mustInclude": [],
+    "mustNotInclude": [
+      "USD"
+    ],
+    "tool": "get_alerts_recommendations"
+  },
+  {
+    "question": "Qual é a previsão de investimento total para os próximos 30 dias?",
+    "mustInclude": [
+      "€|EUR"
+    ],
+    "mustNotInclude": [
+      "USD"
+    ],
+    "tool": "get_forecast"
+  },
+  {
+    "question": "O que aconteceria às conversões se aumentássemos 20% o orçamento da campanha Performance Max | Catálogo?",
+    "mustInclude": [
+      "Performance Max",
+      "convers"
+    ],
+    "mustNotInclude": [],
+    "tool": "get_response_curve"
+  }
 ]

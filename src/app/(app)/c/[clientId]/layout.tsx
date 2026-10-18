@@ -21,7 +21,7 @@ export default async function ClientLayout({ children, params }: { children: Rea
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="sticky top-0 z-20 border-b bg-bg/90 backdrop-blur">
+      <header className="sticky top-0 z-20 border-b bg-bg/90 backdrop-blur max-md:top-11">
         <div className="flex items-center gap-1.5 px-6 pt-2.5 text-xs text-muted">
           <Link href="/clients" className="hover:text-fg">
             Clientes

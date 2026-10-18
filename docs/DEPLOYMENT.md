@@ -25,6 +25,9 @@ Antes de expor publicamente:
 - `APP_URL` tem de corresponder ao domínio público; os URIs de redirecionamento OAuth derivam dele.
 - Altere a password do utilizador inicial após o primeiro login e defina `SEED_DEMO=false` se não quiser clientes de demonstração.
 - Faça backups regulares do Postgres. **Guarde a `ENCRYPTION_KEY` em local seguro:** sem ela, os tokens guardados não podem ser desencriptados e é preciso voltar a ligar as contas.
+- `npm run db:backup` grava em `backups/` (mesmo disco do Postgres). Em Integrações → Configuração → **Cópia de segurança**, indique uma pasta noutro disco ou unidade de rede para receber uma segunda cópia de cada dump.
+- Nessa segunda pasta, as cópias `mih-*.dump` com mais de 30 dias são apagadas automaticamente; a pasta `backups/` local não tem limpeza automática.
+- O botão “Testar” do grupo verifica se a pasta existe e aceita escrita a partir do processo da aplicação (em Docker, o caminho tem de estar montado no contentor).
 
 ## Imagens publicadas
 

@@ -64,7 +64,8 @@ describe("avaliação do agente (Ollama + BD reais)", () => {
       const problems = [
         ...c.mustInclude.filter((n) => !has(r.content, n)).map((n) => `falta "${n}"`),
         ...c.mustNotInclude.filter((n) => has(r.content, n)).map((n) => `contém "${n}"`),
-        ...(r.sources.some((s) => s.name === c.tool && s.ok) ? [] : [`não usou ${c.tool} (usou: ${r.sources.map((s) => s.name).join(", ") || "nenhuma"})`]),
+        // tool "" = resposta aceitável sem ferramenta; "a|b" = qualquer uma serve.
+        ...(!c.tool || r.sources.some((s) => c.tool.split("|").includes(s.name) && s.ok) ? [] : [`não usou ${c.tool} (usou: ${r.sources.map((s) => s.name).join(", ") || "nenhuma"})`]),
       ];
       if (!problems.length) passed++;
       console.log(`${problems.length ? "FAIL" : "ok  "} ${String(i + 1).padStart(2)}/${cases.length} ${c.question}${problems.length ? `\n       → ${problems.join("; ")}\n       resposta: ${r.content.replace(/\s+/g, " ").slice(0, 300)}` : ""}`);

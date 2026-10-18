@@ -27,6 +27,7 @@ export interface Config {
   AGENT_MODEL: string;
   PAGESPEED_API_KEY?: string;
   FX_AUTO_ECB: string;
+  BACKUP_COPY_DIR?: string;
 }
 
 export type SettingSource = "db" | "env" | "default" | "missing";

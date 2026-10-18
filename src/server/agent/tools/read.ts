@@ -10,7 +10,13 @@ import { forecastFromParams, type ForecastParams } from "../train";
 import { whatIf, type ResponseCurve } from "../ml/response-curve";
 import { defineTool, daysParam, DAYS, n, pct, untrusted, type AgentCtx } from "./common";
 
-const days = z.union(DAYS.map((d) => z.literal(d)) as unknown as [z.ZodLiteral<7>, z.ZodLiteral<14>, z.ZodLiteral<30>, z.ZodLiteral<90>]).default(30);
+// O modelo pede períodos como 28 ou 60 dias: aceita-se qualquer valor e ajusta-se à janela suportada mais próxima.
+const days = z.coerce.number().int().min(1).max(365).default(30).transform((d) => DAYS.reduce((best, x) => (Math.abs(x - d) < Math.abs(best - d) ? x : best)));
+const normalize = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+/** O modelo passa muitas vezes o nome em vez do id interno: aceitam-se ambos. */
+function findCampaign<T extends { id: string; name: string }>(campaigns: T[], key: string): T | undefined {
+  return campaigns.find((c) => c.id === key) ?? campaigns.find((c) => normalize(c.name) === normalize(key)) ?? campaigns.find((c) => normalize(c.name).includes(normalize(key)));
+}
 const platformArg = z.enum(["GOOGLE_ADS", "META_ADS"]).optional();
 const PLATFORM_LABEL: Record<string, string> = { GOOGLE_ADS: "Google Ads", META_ADS: "Meta Ads" };
 
@@ -103,13 +109,13 @@ export const getCampaigns = defineTool({
 export const getAds = defineTool({
   name: "get_ads",
   label: () => "anúncios de uma campanha",
-  description: "Anúncios de uma campanha (id interno de get_campaigns) com textos e desempenho de 14 dias.",
-  parameters: { type: "object", properties: { campaignId: { type: "string" } }, required: ["campaignId"] },
-  schema: z.object({ campaignId: z.string().min(1).max(40) }),
+  description: "Anúncios de uma campanha (id interno de get_campaigns ou nome exato da campanha) com textos e desempenho de 14 dias.",
+  parameters: { type: "object", properties: { campaignId: { type: "string", description: "id interno ou nome da campanha" } }, required: ["campaignId"] },
+  schema: z.object({ campaignId: z.string().min(1).max(120) }),
   kind: "read",
   async run(ctx, a) {
     const { campaigns } = await loadManagedCampaigns(ctx.client, ctx.cctx);
-    const c = campaigns.find((x) => x.id === a.campaignId);
+    const c = findCampaign(campaigns, a.campaignId);
     if (!c) return { erro: "Campanha não encontrada neste cliente." };
     const ids = c.groups.flatMap((g) => g.ads.map((ad) => ad.id));
     const texts = await prisma.ad.findMany({ where: { id: { in: ids } }, select: { id: true, headlines: true, descriptions: true, finalUrl: true } });
@@ -205,11 +211,14 @@ export const getResponseCurve = defineTool({
   name: "get_response_curve",
   label: () => "curva de resposta ao orçamento",
   description: "Estimativa de quantas conversões uma campanha ganha ou perde se o investimento mudar X% (curva de rendimento decrescente ajustada aos dados semanais).",
-  parameters: { type: "object", properties: { campaignId: { type: "string" }, changePct: { type: "number", description: "Variação do investimento em %, de -50 a 50" } }, required: ["campaignId", "changePct"] },
-  schema: z.object({ campaignId: z.string().min(1).max(40), changePct: z.number().min(-50).max(50) }),
+  parameters: { type: "object", properties: { campaignId: { type: "string", description: "id interno ou nome da campanha" }, changePct: { type: "number", description: "Variação do investimento em %, de -50 a 50" } }, required: ["campaignId", "changePct"] },
+  schema: z.object({ campaignId: z.string().min(1).max(120), changePct: z.coerce.number().min(-50).max(50) }),
   kind: "read",
   async run(ctx, a) {
-    const m = await prisma.agentModel.findUnique({ where: { clientId_kind_scope: { clientId: ctx.client.id, kind: "RESPONSE_CURVE", scope: `campaign:${a.campaignId}` } } });
+    const { campaigns } = await loadManagedCampaigns(ctx.client, ctx.cctx);
+    const c0 = findCampaign(campaigns, a.campaignId);
+    if (!c0) return { erro: "Campanha não encontrada neste cliente." };
+    const m = await prisma.agentModel.findUnique({ where: { clientId_kind_scope: { clientId: ctx.client.id, kind: "RESPONSE_CURVE", scope: `campaign:${c0.id}` } } });
     if (!m) return { sem_modelo: "Sem curva para esta campanha (menos de 3 semanas com investimento e conversões)." };
     const c = m.params as unknown as ResponseCurve & { campaignName: string };
     const w = whatIf(c, c.meanCost, 1 + a.changePct / 100);
