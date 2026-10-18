@@ -7,7 +7,7 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 
 FROM base AS deps
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json prisma.config.ts ./
 COPY prisma ./prisma
 RUN npm ci
 
@@ -22,7 +22,7 @@ RUN ENCRYPTION_KEY=$(node -e "process.stdout.write(Buffer.alloc(32).toString('ba
 FROM base AS worker
 ENV NODE_ENV=production
 COPY --from=deps /app/node_modules ./node_modules
-COPY package.json package-lock.json tsconfig.json ./
+COPY package.json package-lock.json tsconfig.json prisma.config.ts ./
 COPY prisma ./prisma
 COPY src ./src
 RUN useradd --system --uid 1001 mih && chown -R mih /app

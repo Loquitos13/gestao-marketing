@@ -56,7 +56,7 @@ O rate limiting usa o Redis quando `REDIS_URL` está definido, por isso várias 
 
 `.github/workflows/ci.yml` executa, em cada push para `main` e em pull requests:
 
-1. `npm ci`, `npm audit --omit=dev --audit-level=critical` (dependências de produção; as altas conhecidas em `postcss`, `prisma` e `vitest` exigem majors e ficam para o Dependabot), migrações e seed num Postgres e Redis de serviço.
+1. `npm ci`, `npm audit --omit=dev --audit-level=high` (dependências de produção), migrações e seed num Postgres e Redis de serviço.
 2. `typecheck`, testes unitários e de integração.
 3. `next build` e testes e2e Playwright (Chromium) contra o build.
 4. Build das imagens Docker `app` e `worker`; em push para `main` publica-as no GHCR (ver acima).

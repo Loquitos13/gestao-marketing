@@ -53,9 +53,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # Só dependências de produção e só críticas; as altas restantes (deepmerge-ts via prisma 6)
-      # resolvem-se com o Prisma 7.
-      - run: npm audit --omit=dev --audit-level=critical
+      # Dependências de produção: falha com altas ou críticas.
+      - run: npm audit --omit=dev --audit-level=high
       - run: npx prisma migrate deploy
       - run: npm run db:seed
       - run: npm run typecheck

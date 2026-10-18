@@ -1,4 +1,5 @@
-import { PrismaClient, type GoalMetric, type Platform } from "@prisma/client";
+import type { GoalMetric, Platform } from "@prisma/client";
+import { prisma as db } from "@/lib/prisma";
 import { addDays, addMonths, endOfMonth, startOfMonth, todayInTz } from "@/lib/dates";
 import { slugify } from "@/lib/utils";
 import { hashPassword, passwordPolicyError } from "@/server/auth/password";
@@ -10,7 +11,6 @@ import { evaluateAlerts } from "@/server/alerts/engine";
 import { ALL_SECTION_KEYS } from "@/server/reports/sections";
 import { generateReport } from "@/server/reports/service";
 
-const db = new PrismaClient();
 const d = (iso: string) => new Date(`${iso}T00:00:00Z`);
 
 const DEFAULT_ALERTS: { type: string; name: string; threshold: number; windowDays?: number; cooldownHours?: number }[] = [

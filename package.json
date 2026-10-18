@@ -30,11 +30,9 @@
     "db:reset": "prisma migrate reset --force",
     "postinstall": "prisma generate"
   },
-  "prisma": {
-    "seed": "tsx --env-file-if-exists=.env prisma/seed.ts"
-  },
   "dependencies": {
-    "@prisma/client": "6.19.3",
+    "@prisma/adapter-pg": "^7.10.1",
+    "@prisma/client": "7.10.1",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@react-pdf/renderer": "^4.3.0",
     "@tanstack/react-table": "^8.21.3",
@@ -47,6 +45,7 @@
     "next": "16.4.2",
     "next-themes": "^0.4.6",
     "nodemailer": "^10.1.1",
+    "pg": "^8.23.1",
     "pino": "^9.9.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
@@ -61,9 +60,10 @@
     "@tailwindcss/postcss": "^4.1.13",
     "@types/node": "^22.18.0",
     "@types/nodemailer": "^7.0.1",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "prisma": "6.19.3",
+    "prisma": "7.10.1",
     "tailwindcss": "^4.1.13",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2",

@@ -3,11 +3,10 @@
  * Criam organizações/clientes temporários e removem-nos no fim. São ignorados se a BD não estiver acessível.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { addDays, todayInTz } from "@/lib/dates";
 import { resolveClientAccess, accessibleClientsWhere } from "@/server/auth/tenant";
 
-const prisma = new PrismaClient();
 const tag = `it-${Date.now()}`;
 let dbOk = false;
 const ids = { orgA: "", orgB: "", clientA: "", clientB: "", viewer: "", owner: "" };

@@ -2,11 +2,10 @@
  * Smoke test local: cria uma sessão temporária para o administrador, percorre todas as páginas
  * e rotas de exportação e reporta códigos HTTP e erros. Uso: npm run smoke (servidor a correr).
  */
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { createHash, randomBytes } from "node:crypto";
 
 const BASE = process.env.SMOKE_URL ?? "http://localhost:3100";
-const prisma = new PrismaClient();
 
 async function main() {
   const email = process.env.ADMIN_EMAIL;
