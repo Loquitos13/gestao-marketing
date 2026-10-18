@@ -134,7 +134,7 @@ jobs:
             type=sha
             type=raw,value=latest,enable={{is_default_branch}}
       - name: Build app
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           target: app
@@ -144,7 +144,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Build worker
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           target: worker
