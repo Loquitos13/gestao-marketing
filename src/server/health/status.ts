@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { getConfig } from "@/server/config/settings";
 import { ollamaReachableUrl } from "@/server/agent/llm";
-import { workerIsRunning } from "@/server/sync/worker-presence";
+import { claimWorkerDownNotice, workerIsRunning } from "@/server/sync/worker-presence";
+import { sendEmail } from "@/server/notify/email";
+import { logger } from "@/lib/logger";
 
 export type ServiceState = "ok" | "down" | "off";
 
@@ -57,4 +59,27 @@ export async function serviceReport(): Promise<ServiceReport> {
   if (cfg.redisUrl && redisUp) worker = (await workerIsRunning(cfg.redisUrl)) ? "ok" : "down";
   else if (cfg.redisUrl) worker = "down";
   return { database: database ? "ok" : "down", redis, worker, model: model ? "ok" : "down" };
+}
+
+let warnedNoSmtp = false;
+
+/**
+ * Avisa proprietários e administradores por email quando o worker está parado há 15 min.
+ * Chamado a cada /api/health (Docker, ~30 s); o marcador no Redis garante um único aviso por paragem.
+ */
+export async function checkWorkerDown(): Promise<void> {
+  const { redisUrl } = await configured();
+  if (!redisUrl) return;
+  if ((await claimWorkerDownNotice(redisUrl)) !== "notify") return;
+  const members = await prisma.organizationMember.findMany({ where: { role: { in: ["OWNER", "ADMIN"] } }, select: { user: { select: { email: true } } } });
+  const text = "O worker da aplicação não renova a presença há mais de 15 minutos. As sincronizações, relatórios agendados e alertas ficam parados até ser reiniciado (npm run worker ou o contentor do worker). Este aviso só se repete se o worker voltar e parar de novo.";
+  for (const to of new Set(members.map((m) => m.user.email))) {
+    const r = await sendEmail({ to, subject: "[Marketing Intelligence Hub] Worker parado", text });
+    if (r.status === "SKIPPED_NOT_CONFIGURED") {
+      if (!warnedNoSmtp) logger.warn("Worker parado há mais de 15 minutos; sem SMTP configurado, o aviso por email não foi enviado");
+      warnedNoSmtp = true;
+      return;
+    }
+  }
+  logger.warn({ recipients: members.length }, "Worker parado: aviso enviado aos proprietários e administradores");
 }

@@ -78,6 +78,12 @@ O agente nunca aplica alterações: cria propostas que um utilizador tem de conf
 
 `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`. Sem `SMTP_HOST`, relatórios e alertas **não são enviados**; cada tentativa fica registada como «Não enviado: SMTP não configurado».
 
+Com SMTP e Redis, os proprietários e administradores recebem um email quando o worker está parado há mais de 15 minutos (verificado em `/api/health`, uma vez por paragem).
+
+## Taxas de câmbio (BCE)
+
+O worker importa todos os dias às 16:30 UTC as taxas de referência do Banco Central Europeu (`eurofxref-daily.xml`, base EUR, ~30 moedas, sem chave) e grava-as com a fonte «ECB». As taxas introduzidas manualmente em Definições para o mesmo dia nunca são substituídas. `FX_AUTO_ECB=false` desliga a importação.
+
 ## Depois de ligar
 
 1. **Integrações → Ligar Google/Meta.** São descobertas as contas a que a sua conta tem acesso.

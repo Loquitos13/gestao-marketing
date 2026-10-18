@@ -13,6 +13,10 @@ import { trainAllPreferences } from "@/server/agent/learning";
 import { analyzeAllClients, analyzeClient, requestAnalysisAfterSync, type RunTrigger } from "@/server/agent/analyze";
 import { refreshAllCompetitors, refreshAllKeywordIdeas, refreshCompetitors, refreshKeywordIdeas } from "@/server/competitors/refresh";
 import { startWorkerPresence } from "@/server/sync/worker-presence";
+import { importEcbRates } from "@/server/fx/ecb";
+
+/** FX_AUTO_ECB=false desliga a importação diária de taxas do BCE (ligada por omissão). */
+const fxAutoEcb = process.env.FX_AUTO_ECB !== "false";
 
 async function processSync(job: Job<SyncJobData>) {
   try {
@@ -41,6 +45,8 @@ async function processMaintenance(job: Job) {
       return { models: await trainAllClients(), preferences: await trainAllPreferences() };
     case "align-reports":
       return alignReportComparisons();
+    case "fx-ecb":
+      return importEcbRates();
     default:
       throw new UnrecoverableError(`Tarefa desconhecida: ${job.name}`);
   }
@@ -89,6 +95,9 @@ async function main() {
     ["agent-train", "0 6 * * *"],
     ["align-reports", "20 4 * * *"],
   ];
+  // BCE publica ~16:00 CET; 16:30 UTC cobre o horário de verão.
+  if (fxAutoEcb) repeatable.push(["fx-ecb", "30 16 * * *"]);
+  else await maintenance.removeJobScheduler("fx-ecb");
   for (const [name, pattern] of repeatable) {
     await maintenance.upsertJobScheduler(name, { pattern, tz: "UTC" }, { name, opts: { removeOnComplete: 100, removeOnFail: 200 } });
   }

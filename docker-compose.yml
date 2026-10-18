@@ -31,9 +31,11 @@ services:
       retries: 10
 
   # Perfil "full": app + worker em contentores (`docker compose --profile full up -d --build`).
+  # Sem `--build` usa as imagens publicadas no GHCR pela CI (`docker compose pull`).
   # Em desenvolvimento usar `npm run dev` e `npm run worker`.
   migrate:
     profiles: ["full"]
+    image: ghcr.io/loquitos13/gestao-marketing/worker:latest
     build: { context: ., target: worker }
     # Seed inicial (uma vez): docker compose --profile full run --rm migrate npm run db:seed
     command: ["npx", "prisma", "migrate", "deploy"]
@@ -47,6 +49,7 @@ services:
 
   app:
     profiles: ["full"]
+    image: ghcr.io/loquitos13/gestao-marketing/app:latest
     build: { context: ., target: app }
     env_file: .env
     environment:
@@ -73,6 +76,7 @@ services:
 
   worker:
     profiles: ["full"]
+    image: ghcr.io/loquitos13/gestao-marketing/worker:latest
     build: { context: ., target: worker }
     env_file: .env
     environment:

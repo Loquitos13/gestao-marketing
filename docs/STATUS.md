@@ -18,6 +18,9 @@ Atualizado em 15/10/2026. Legenda:
 | Testes e2e (Playwright) | 8 testes: login, redirecionamento sem sessão, 401 em exportações anónimas, painel global com clientes DEMO, navegação nas secções do cliente (incluindo Gestão, Agente IA e os cinco separadores de Concorrência), configuração das integrações sem expor segredos, registo de taxa de câmbio, 404 entre clientes, geração e exportação de relatório PDF/CSV/Excel |
 | Smoke test | todas as páginas e exportações respondem 200 com sessão; 401/404 onde esperado, em desenvolvimento e na imagem Docker de produção |
 | Build de produção | imagens `app` e `worker` construídas; a `app` passou o smoke test e o worker arrancou ligado ao Redis |
+| `npm run integrations:verify` | chama cada conector REAL de um cliente (`--client` id ou nome) para o dia de ontem, sem escrever métricas; tabela plataforma/conta/linhas/erro, sai com 1 se algum falhar; fontes simuladas são ignoradas |
+| `npm run load:sync` | teste de carga do `writeSyncResult`: conta fictícia com 3000 anúncios (`--ads`) e 30 dias de métricas escrita duas vezes (inserções; sem alterações) numa organização/cliente LOADTEST descartáveis, apagados no fim; recusa em produção |
+| `npm run agent:eval` | 20 perguntas em português sobre o cliente demo "Loja Atlântico (DEMO)" ao agente com Ollama e BD reais (`tests/eval/cases.json`); verifica frases obrigatórias/proibidas e a ferramenta usada, exige ≥ 80%; ignorado sem Ollama/BD e fora do `npm test` |
 
 ## Módulos
 

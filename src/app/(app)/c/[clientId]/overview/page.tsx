@@ -17,6 +17,8 @@ import { FilterBar } from "@/components/filter-bar";
 import { ShareBar, Tbl, Td } from "@/components/simple-table";
 import { ActivityList, NoteList, TaskList } from "@/components/workspace-lists";
 import { Badge, Card, CardHeader, Dot, EmptyState, LinkButton, Notice, SectionTitle } from "@/components/ui";
+import { OnboardingChecklist } from "@/components/onboarding-checklist";
+import { loadOnboarding } from "@/server/queries/onboarding";
 import { pageContext } from "../page-context";
 import { PacingPanel, RecommendationsPanel } from "./side-panels";
 
@@ -28,15 +30,19 @@ const DOT = { GOOGLE_ADS: "google", META_ADS: "meta" } as const;
 export default async function OverviewPage(props: { params: Promise<{ clientId: string }>; searchParams: Promise<Record<string, string>> }) {
   const { client, ctx, tenant, filters, fmt, compareLabel } = await pageContext(props.params, props.searchParams);
   const base = `/c/${client.id}`;
+  const onboarding = <OnboardingChecklist {...await loadOnboarding(ctx)} role={tenant.role} />;
   if (!ctx.sources.length) {
     return (
-      <Card>
-        <EmptyState
-          title="Ainda não há fontes de dados ligadas a este cliente"
-          description="Ligue Google Ads, Meta Ads, Search Console ou GA4 para começar a ver métricas. Nenhum valor é apresentado sem fonte."
-          action={<LinkButton href={`${base}/sources`} variant="primary">Ligar fontes de dados</LinkButton>}
-        />
-      </Card>
+      <>
+        {onboarding}
+        <Card>
+          <EmptyState
+            title="Ainda não há fontes de dados ligadas a este cliente"
+            description="Ligue Google Ads, Meta Ads, Search Console ou GA4 para começar a ver métricas. Nenhum valor é apresentado sem fonte."
+            action={<LinkButton href={`${base}/sources`} variant="primary">Ligar fontes de dados</LinkButton>}
+          />
+        </Card>
+      </>
     );
   }
   const today = todayInTz(client.timezone);
@@ -89,6 +95,7 @@ export default async function OverviewPage(props: { params: Promise<{ clientId: 
           </Notice>
         )}
       </div>
+      {onboarding}
 
       {headline.length > 0 && <KpiStrip kpis={headline} fmt={fmt} compareLabel={compareLabel} cols={6} />}
       {morePaid.length > 0 && (

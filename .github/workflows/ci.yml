@@ -27,7 +27,8 @@ env:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    # Fixado: ubuntu-latest passa a Ubuntu 26 em 2026-10-19.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     services:
       postgres:
@@ -46,12 +47,15 @@ jobs:
           --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 10
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Só dependências de produção e só críticas: as altas conhecidas (postcss via next 15,
+      # prisma 6, vitest 3) exigem majors (next 16, prisma 7, vitest 5) e ficam para o Dependabot.
+      - run: npm audit --omit=dev --audit-level=critical
       - run: npx prisma migrate deploy
       - run: npm run db:seed
       - run: npm run typecheck
@@ -66,7 +70,7 @@ jobs:
           npx playwright test
         env:
           NODE_ENV: production
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: failure()
         with:
           name: playwright-report
@@ -75,15 +79,76 @@ jobs:
             test-results
           retention-days: 7
 
-  docker:
-    runs-on: ubuntu-latest
+  # Ensaio de restauro: os scripts db:backup/db:restore-check usam `docker compose exec postgres`,
+  # por isso o Postgres vem do docker-compose.yml (porta 5442) e não de um serviço do job.
+  restore-check:
+    runs-on: ubuntu-24.04
     needs: verify
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: postgresql://mih:mih_dev_password@localhost:5442/mih
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: docker compose up -d --wait postgres
+      - run: npx prisma migrate deploy
+      - run: npm run db:seed
+      - run: npm run db:backup
+      # Sem argumento usa o .dump mais recente em backups/ (o acabado de criar).
+      - run: npm run db:restore-check
+
+  docker:
+    runs-on: ubuntu-24.04
+    needs: verify
+    permissions:
+      contents: read
+      packages: write
+    env:
+      # Só publica em push para main; em pull_request apenas constrói.
+      PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@v5
       - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: env.PUSH == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta-app
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/app
+          tags: |
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
+      - id: meta-worker
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/worker
+          tags: |
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
       - name: Build app
         uses: docker/build-push-action@v6
-        with: { context: ., target: app, push: false, cache-from: type=gha, cache-to: "type=gha,mode=max" }
+        with:
+          context: .
+          target: app
+          push: ${{ env.PUSH == 'true' }}
+          tags: ${{ steps.meta-app.outputs.tags }}
+          labels: ${{ steps.meta-app.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
       - name: Build worker
         uses: docker/build-push-action@v6
-        with: { context: ., target: worker, push: false, cache-from: type=gha }
+        with:
+          context: .
+          target: worker
+          push: ${{ env.PUSH == 'true' }}
+          tags: ${{ steps.meta-worker.outputs.tags }}
+          labels: ${{ steps.meta-worker.outputs.labels }}
+          cache-from: type=gha
