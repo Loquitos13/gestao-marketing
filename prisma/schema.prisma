@@ -1017,6 +1017,8 @@ model AgentRun {
   proposals  Int       @default(0)
   summary    String?   @db.Text
   error      String?
+  promptTokens Int?
+  evalTokens   Int?
   startedAt  DateTime  @default(now())
   finishedAt DateTime?
   durationMs Int?
@@ -1030,6 +1032,9 @@ model AgentConversation {
   client    Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
   userId    String
   title     String
+  /// Resumo das mensagens antigas (até `summaryCount`), para não perder o início da conversa.
+  summary      String? @db.Text
+  summaryCount Int     @default(0)
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
   messages  AgentMessage[]
@@ -1050,6 +1055,10 @@ model AgentMessage {
   unverified     Json?
   /// IDs de Recommendation/AdChange criados nesta resposta.
   proposals      Json?
+  /// Medição: tokens de entrada/saída e duração (só em respostas do assistente).
+  promptTokens   Int?
+  evalTokens     Int?
+  durationMs     Int?
   createdAt      DateTime          @default(now())
 
   @@index([conversationId, createdAt])

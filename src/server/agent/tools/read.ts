@@ -48,7 +48,7 @@ function paidPlatforms(ctx: AgentCtx, p?: Platform): Platform[] {
 export const getKpis = defineTool({
   name: "get_kpis",
   label: (a) => `KPIs pagos, ${a.days} dias`,
-  description: "KPIs das campanhas pagas (investimento, conversões, CPA, ROAS, CTR) por plataforma e no total, com variação face ao período anterior de igual duração.",
+  description: "KPIs das campanhas pagas (investimento, conversões, CPA, ROAS, CTR) por plataforma e no total. variacao_pct compara com os `days` dias imediatamente anteriores ao período devolvido.",
   parameters: { type: "object", properties: { days: daysParam } },
   schema: z.object({ days }),
   kind: "read",
@@ -65,7 +65,6 @@ export const getKpis = defineTool({
     };
     return {
       periodo: cur,
-      periodo_anterior: prev,
       moeda: ctx.client.currency,
       total: row(ct.rows[0], pt.rows[0]),
       por_plataforma: Object.fromEntries(platforms.map((pl) => [PLATFORM_LABEL[pl], row(c.rows.find((r) => r.key === pl), p.rows.find((r) => r.key === pl))])),
@@ -77,9 +76,9 @@ export const getKpis = defineTool({
 export const getCampaigns = defineTool({
   name: "get_campaigns",
   label: (a) => `campanhas ${a.platform ? PLATFORM_LABEL[a.platform] : "Google e Meta"}, 14 dias`,
-  description: "Campanhas com estado, orçamento diário, se o orçamento é editável e desempenho dos últimos 14 dias. Devolve o id interno de cada campanha e conjunto/grupo (use-os em propose_ad_change).",
-  parameters: { type: "object", properties: { platform: { type: "string", enum: ["GOOGLE_ADS", "META_ADS"] } } },
-  schema: z.object({ platform: platformArg }),
+  description: "Campanhas com estado, orçamento diário, se o orçamento é editável e desempenho dos últimos 14 dias. Devolve o id interno de cada campanha (use-o em propose_ad_change). Para alterar um conjunto/grupo ou propor palavras-chave peça incluirGrupos=true, que devolve os ids dos conjuntos/grupos.",
+  parameters: { type: "object", properties: { platform: { type: "string", enum: ["GOOGLE_ADS", "META_ADS"] }, incluirGrupos: { type: "boolean", description: "Incluir os conjuntos/grupos de cada campanha com os seus ids. Por omissão false." } } },
+  schema: z.object({ platform: platformArg, incluirGrupos: z.coerce.boolean().default(false) }),
   kind: "read",
   async run(ctx, a) {
     const { campaigns, window } = await loadManagedCampaigns(ctx.client, ctx.cctx);
@@ -99,8 +98,8 @@ export const getCampaigns = defineTool({
         cpa: n(c.perf?.cpa),
         roas: n(c.perf?.roas),
         ctr_pct: n(c.perf?.ctr === null || c.perf?.ctr === undefined ? null : c.perf.ctr * 100),
-        perda_impressoes_orcamento_pct: n(c.perf?.lostBudget === null || c.perf?.lostBudget === undefined ? null : c.perf.lostBudget * 100),
-        grupos: c.groups.slice(0, 10).map((g) => ({ id: g.id, nome: untrusted(g.name), estado: g.status, orcamento_diario: n(g.dailyBudget), anuncios: g.ads.length })),
+        perda_impr_orcamento_pct: n(c.perf?.lostBudget === null || c.perf?.lostBudget === undefined ? null : c.perf.lostBudget * 100),
+        grupos: a.incluirGrupos ? c.groups.slice(0, 10).map((g) => ({ id: g.id, nome: untrusted(g.name), estado: g.status, orcamento_diario: n(g.dailyBudget), anuncios: g.ads.length })) : undefined,
       }));
     return { periodo: window, moeda: ctx.client.currency, campanhas: list };
   },
@@ -172,7 +171,7 @@ export const getSeo = defineTool({
   async run(ctx, a) {
     if (!ctx.cctx.has.SEARCH_CONSOLE) return { sem_dados: "O cliente não tem o Search Console ligado." };
     const { cur, prev } = windows(ctx, a.days);
-    const [t, tp, queries, pages] = await Promise.all([searchTotals(ctx.client.id, cur.start, cur.end), searchTotals(ctx.client.id, prev.start, prev.end), searchByKey(ctx.client.id, "QUERY", cur, prev, 15), searchByKey(ctx.client.id, "PAGE", cur, prev, 10)]);
+    const [t, tp, queries, pages] = await Promise.all([searchTotals(ctx.client.id, cur.start, cur.end), searchTotals(ctx.client.id, prev.start, prev.end), searchByKey(ctx.client.id, "QUERY", cur, prev, 10), searchByKey(ctx.client.id, "PAGE", cur, prev, 8)]);
     const row = (k: (typeof queries)[number]) => ({ chave: untrusted(k.key, 120), cliques: k.current.clicks, impressoes: k.current.impressions, ctr_pct: n(k.current.ctr === null ? null : k.current.ctr * 100), posicao: n(k.current.position, 1), cliques_antes: k.previous.clicks });
     return {
       periodo: cur,

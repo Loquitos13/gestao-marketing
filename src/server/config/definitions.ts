@@ -20,6 +20,7 @@ export type SettingKey =
   | "REDIS_URL"
   | "OLLAMA_URL"
   | "AGENT_MODEL"
+  | "AGENT_CONTEXT_TOKENS"
   | "PAGESPEED_API_KEY"
   | "FX_AUTO_ECB"
   | "BACKUP_COPY_DIR";
@@ -131,6 +132,7 @@ export const SETTING_GROUPS: SettingGroup[] = [
     fields: [
       { key: "OLLAMA_URL", label: "URL do Ollama", type: "url", placeholder: "http://127.0.0.1:11434", schema: text(200).refine(isLocalUrl, "Só endereços locais (localhost, 127.0.0.1, rede privada)").transform((v) => v.replace(/\/+$/, "")) },
       { key: "AGENT_MODEL", label: "Modelo", placeholder: "qwen2.5:7b-instruct", hint: "Tem de suportar chamadas de ferramentas. Descarregue-o antes com: ollama pull <modelo>.", schema: text(100).refine((v) => /^[a-z0-9._:/-]+$/i.test(v), "Nome de modelo inválido") },
+      { key: "AGENT_CONTEXT_TOKENS", label: "Janela de contexto (tokens)", type: "number", placeholder: "8192", hint: "8192 cabe em 8 GB de VRAM com um modelo 7B Q4; valores maiores aumentam a latência.", schema: text(5).refine((v) => /^\d+$/.test(v) && Number(v) >= 2048 && Number(v) <= 32768, "Entre 2048 e 32768") },
     ],
   },
   {

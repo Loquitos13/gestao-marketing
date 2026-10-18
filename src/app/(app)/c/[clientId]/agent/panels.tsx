@@ -17,7 +17,7 @@ const TRIGGER: Record<string, string> = { SCHEDULE: "Diária", SYNC: "Após sinc
 export function StatusPanel({ clientId, ok, message, model, canUse, worker }: { clientId: string; ok: boolean; message: string; model: string; canUse: boolean; worker: "on" | "off" | "inline" }) {
   return (
     <Card>
-      <CardHeader title="Estado do agente" description={`Modelo local: ${model}. Nenhum dado sai deste servidor. O modelo liberta a memória cerca de 10 minutos depois do último pedido. Chat, relatórios e o worker usam-no um de cada vez.`} />
+      <CardHeader title="Estado do agente" description={`Modelo local: ${model}. Nenhum dado sai deste servidor. O modelo liberta a memória cerca de 30 minutos depois do último pedido. Chat, relatórios e o worker usam-no um de cada vez.`} />
       <div className="space-y-3 px-4 py-3 text-xs">
         <p className="flex items-start gap-2">
           <Dot tone={ok ? "on" : "warn"} className="mt-1" />
@@ -132,12 +132,20 @@ export function LearningPanel({ pref }: { pref: AgentPreference | null }) {
   );
 }
 
+const avg = (xs: (number | null)[]) => {
+  const v = xs.filter((x): x is number => x != null);
+  return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : null;
+};
+
+/** Recebe até 20 execuções: a média usa todas, a lista mostra as 8 mais recentes. */
 export function RunsPanel({ runs, fmt }: { runs: AgentRun[]; fmt: FormatContext }) {
+  const avgIn = avg(runs.map((r) => r.promptTokens));
+  const avgMs = avg(runs.map((r) => r.durationMs));
   return (
     <Card>
-      <CardHeader title="Execuções" description="Análises autónomas e pedidas." />
+      <CardHeader title="Execuções" description={avgMs != null ? `Últimas ${runs.length}: ${avgIn ?? "—"} tokens de entrada e ${Math.round(avgMs / 1000)} s em média.` : "Análises autónomas e pedidas."} />
       <ul className="divide-y text-xs">
-        {runs.map((r) => {
+        {runs.slice(0, 8).map((r) => {
           const s = RUN_STATUS[r.status] ?? RUN_STATUS.FAILED!;
           return (
             <li key={r.id} className="space-y-1 px-4 py-2.5">
@@ -149,6 +157,7 @@ export function RunsPanel({ runs, fmt }: { runs: AgentRun[]; fmt: FormatContext 
               {r.status === "SUCCESS" && (
                 <p className="text-muted">
                   {suggestionOutcome(r.proposals, skipCounts(r.toolCalls))} {r.durationMs ? `${Math.round(r.durationMs / 1000)} s` : "—"}
+                  {r.promptTokens != null && ` · ${r.promptTokens} tokens de entrada, ${r.evalTokens ?? 0} de saída`}
                 </p>
               )}
               {r.summary && <p className="line-clamp-4 whitespace-pre-wrap text-fg-2">{r.summary}</p>}

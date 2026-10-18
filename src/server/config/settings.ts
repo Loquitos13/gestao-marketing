@@ -25,6 +25,7 @@ export interface Config {
   SMTP_FROM?: string;
   OLLAMA_URL: string;
   AGENT_MODEL: string;
+  AGENT_CONTEXT_TOKENS: number;
   PAGESPEED_API_KEY?: string;
   FX_AUTO_ECB: string;
   BACKUP_COPY_DIR?: string;
@@ -40,6 +41,7 @@ const DEFAULTS: Partial<Record<SettingKey, string>> = {
   SMTP_PORT: "587",
   OLLAMA_URL: "http://127.0.0.1:11434",
   AGENT_MODEL: "qwen2.5:7b-instruct",
+  AGENT_CONTEXT_TOKENS: "8192",
   FX_AUTO_ECB: "true",
 };
 
@@ -97,6 +99,7 @@ export async function getConfig(): Promise<Config> {
   const out: Record<string, string | number | undefined> = {};
   for (const f of SETTING_FIELDS) out[f.key] = resolve(f.key, stored).value;
   out.SMTP_PORT = Number(out.SMTP_PORT) || 587;
+  out.AGENT_CONTEXT_TOKENS = Number(out.AGENT_CONTEXT_TOKENS) || 8192;
   return out as unknown as Config;
 }
 

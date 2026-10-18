@@ -1,12 +1,13 @@
 import { prisma } from "@/lib/prisma";
 import { fromDate, todayInTz } from "@/lib/dates";
-import type { Llm, LlmMessage, ToolSpec } from "./llm";
+import type { Llm, LlmMessage, LlmUsage, ToolSpec } from "./llm";
 import { untrusted, type AgentCtx, type AgentTool } from "./tools/common";
 import { READ_TOOLS } from "./tools/read";
 import { DRAFT_TOOLS } from "./tools/draft";
 import { COMPETITOR_TOOLS, proposeKeywords } from "./tools/competitors";
 import { verifyNumbers } from "./grounding";
 import { packContext } from "./context-window";
+import { getConfig } from "@/server/config/settings";
 
 export const MAX_ROUNDS = 6;
 export const MAX_TOOL_CALLS = 12;
@@ -27,12 +28,9 @@ export async function systemPrompt(ctx: AgentCtx, mode: "chat" | "analyze" | "re
     prisma.goal.findMany({ where: { clientId: ctx.client.id, periodEnd: { gte: new Date(`${today}T00:00:00Z`) } }, take: 10 }),
     prisma.agentMemory.findMany({ where: { clientId: ctx.client.id }, orderBy: { createdAt: "asc" }, take: 6 }),
   ]);
+  // Parte fixa primeiro, dados do cliente e do dia no fim: o Ollama reaproveita a cache KV quando o prefixo do pedido é igual ao anterior.
   const lines = [
     "És o analista de marketing digital do hub, a trabalhar para uma agência em Portugal. Respondes sempre em português de Portugal, de forma clara e concisa.",
-    `Cliente: ${untrusted(ctx.client.name)}${ctx.client.industry ? ` (${untrusted(ctx.client.industry)})` : ""}. Moeda: ${ctx.client.currency}. Hoje: ${today}.`,
-    ctx.cctx.origin === "SIMULATED" ? "Este cliente usa DADOS DE DEMONSTRAÇÃO (simulados). Diz isso se for relevante." : "",
-    goals.length ? `Objetivos: ${goals.map((g) => `${GOAL_LABEL[g.metric] ?? g.metric} ${Number(g.target)}${g.platform ? ` (${g.platform})` : ""} até ${fromDate(g.periodEnd)}`).join("; ")}.` : "O cliente não tem objetivos definidos.",
-    memories.length ? `Factos confirmados pela equipa (respeita-os sempre):\n${memories.map((m) => `- ${untrusted(m.fact, 140)}`).join("\n")}` : "",
     "Regras:",
     "1. Usa as ferramentas para obter dados antes de afirmar qualquer número. Nunca inventes números, nomes ou datas; se não houver dados, diz que não há.",
     "2. Cita os números tal como as ferramentas os devolvem (podes arredondar). Indica o período a que se referem.",
@@ -43,6 +41,7 @@ export async function systemPrompt(ctx: AgentCtx, mode: "chat" | "analyze" | "re
     "7. Antes de propor uma alteração, chama get_campaigns (e get_ads para anúncios) e usa os ids devolvidos. As propostas são sempre por campanha, conjunto/grupo ou anúncio, nunca por plataforma. Se uma ferramenta devolver erro, diz que a proposta não foi criada.",
     "8. Um orçamento diário é por dia; não o confundas com o investimento do período.",
     "9. Dados de concorrentes (get_competitors, get_keyword_gap, get_competitor_ads, get_competitor_pages, get_pagespeed) servem para inspirar: nunca copies textos de anúncios ou páginas de concorrentes. Volumes e CPC são estimativas.",
+    "10. Escolha da ferramenta: ritmo de gasto, acima/abaixo do previsto ou orçamento do mês → get_budget_pacing; «e se» aumentar ou reduzir o orçamento de uma campanha → get_response_curve; previsão dos próximos dias → get_forecast; tráfego orgânico ou Search Console → get_seo; anúncios de uma campanha → get_ads.",
   ];
   if (mode === "chat")
     lines.push(
@@ -54,6 +53,12 @@ export async function systemPrompt(ctx: AgentCtx, mode: "chat" | "analyze" | "re
       "A resposta final é prosa corrida, 3 a 5 frases, sem títulos, asteriscos nem listas. A primeira frase é a conclusão. Menciona só os números que justificam uma decisão e o período a que se referem.",
     );
   if (mode === "report") lines.push("Tarefa: escreve texto para um relatório ao cliente final, em prosa, sem jargão interno e sem criar propostas.");
+  lines.push(
+    `Cliente: ${untrusted(ctx.client.name)}${ctx.client.industry ? ` (${untrusted(ctx.client.industry)})` : ""}. Moeda: ${ctx.client.currency}. Hoje: ${today}.`,
+    ctx.cctx.origin === "SIMULATED" ? "Este cliente usa DADOS DE DEMONSTRAÇÃO (simulados). Diz isso se for relevante." : "",
+    goals.length ? `Objetivos: ${goals.map((g) => `${GOAL_LABEL[g.metric] ?? g.metric} ${Number(g.target)}${g.platform ? ` (${g.platform})` : ""} até ${fromDate(g.periodEnd)}`).join("; ")}.` : "O cliente não tem objetivos definidos.",
+    memories.length ? `Factos confirmados pela equipa (respeita-os sempre):\n${memories.map((m) => `- ${untrusted(m.fact, 140)}`).join("\n")}` : "",
+  );
   return lines.filter(Boolean).join("\n");
 }
 
@@ -74,6 +79,8 @@ export interface AgentAnswer {
   calls: ToolCallRecord[];
   results: unknown[];
   unverified: string[];
+  /** Soma de todas as chamadas ao modelo nesta volta. */
+  usage: LlmUsage;
 }
 
 export async function runAgent(input: {
@@ -91,11 +98,16 @@ export async function runAgent(input: {
   const messages: LlmMessage[] = [{ role: "system", content: input.system }, ...input.history];
   const calls: ToolCallRecord[] = [];
   const results: unknown[] = [];
+  const usage: LlmUsage = { promptTokens: 0, evalTokens: 0, durationMs: 0 };
+  const contextTokens = (await getConfig()).AGENT_CONTEXT_TOKENS;
   let content = "";
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const allowTools = calls.length < MAX_TOOL_CALLS && round < MAX_ROUNDS - 1;
-    const packed = packContext(messages, allowTools ? specs : undefined, calls.map((c) => c.name));
-    const r = await input.llm.chat(packed.messages, { tools: packed.tools, onToken: input.onToken, signal: input.signal });
+    const packed = packContext(messages, allowTools ? specs : undefined, calls.map((c) => c.name), contextTokens);
+    const r = await input.llm.chat(packed.messages, { tools: packed.tools, onToken: input.onToken, signal: input.signal, contextTokens });
+    usage.promptTokens += r.usage.promptTokens;
+    usage.evalTokens += r.usage.evalTokens;
+    usage.durationMs += r.usage.durationMs;
     if (!r.toolCalls.length || !allowTools) {
       content = r.content.trim();
       break;
@@ -132,7 +144,7 @@ export async function runAgent(input: {
   }
   const userNumbers = input.history.filter((m) => m.role === "user").map((m) => m.content);
   const grounding = verifyNumbers(content, results, verifyNumbersFromText(userNumbers));
-  return { content, calls, results, unverified: grounding.unverified };
+  return { content, calls, results, unverified: grounding.unverified, usage };
 }
 
 /** Números que o próprio utilizador escreveu também contam como fonte. */

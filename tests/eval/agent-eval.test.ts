@@ -59,8 +59,12 @@ describe("avaliação do agente (Ollama + BD reais)", () => {
     if (skipReason || !client) skip(`Ignorado: ${skipReason}`);
     const full = await prisma.client.findUniqueOrThrow({ where: { id: client!.id } });
     let passed = 0;
+    let totalMs = 0;
     for (const [i, c] of (cases as Case[]).entries()) {
+      const t0 = Date.now();
       const r = await chatTurn({ client: full, organizationId: full.organizationId, userId, canAds: false, message: c.question, onConversation: (id) => conversations.push(id) });
+      const ms = Date.now() - t0;
+      totalMs += ms;
       const problems = [
         ...c.mustInclude.filter((n) => !has(r.content, n)).map((n) => `falta "${n}"`),
         ...c.mustNotInclude.filter((n) => has(r.content, n)).map((n) => `contém "${n}"`),
@@ -68,10 +72,10 @@ describe("avaliação do agente (Ollama + BD reais)", () => {
         ...(!c.tool || r.sources.some((s) => c.tool.split("|").includes(s.name) && s.ok) ? [] : [`não usou ${c.tool} (usou: ${r.sources.map((s) => s.name).join(", ") || "nenhuma"})`]),
       ];
       if (!problems.length) passed++;
-      console.log(`${problems.length ? "FAIL" : "ok  "} ${String(i + 1).padStart(2)}/${cases.length} ${c.question}${problems.length ? `\n       → ${problems.join("; ")}\n       resposta: ${r.content.replace(/\s+/g, " ").slice(0, 300)}` : ""}`);
+      console.log(`${problems.length ? "FAIL" : "ok  "} ${String(i + 1).padStart(2)}/${cases.length} [${(ms / 1000).toFixed(1)}s] ${c.question}${problems.length ? `\n       → ${problems.join("; ")}\n       resposta: ${r.content.replace(/\s+/g, " ").slice(0, 300)}` : ""}`);
     }
     const rate = passed / cases.length;
-    console.log(`\nResumo: ${passed}/${cases.length} casos (${Math.round(rate * 100)}%) · mínimo ${MIN_PASS_RATE * 100}%`);
+    console.log(`\nResumo: ${passed}/${cases.length} casos (${Math.round(rate * 100)}%) · mínimo ${MIN_PASS_RATE * 100}% · ${(totalMs / 1000).toFixed(1)}s total · ${(totalMs / cases.length / 1000).toFixed(1)}s por pergunta`);
     expect(rate).toBeGreaterThanOrEqual(MIN_PASS_RATE);
   });
 });

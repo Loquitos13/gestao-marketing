@@ -37,6 +37,8 @@ export async function analyzeClient(clientId: string, trigger: RunTrigger, opts:
       toolCalls: { calls: answer.calls, unverified: answer.unverified, skipped: ctx.skipped ?? { duplicate: 0, suppressed: 0, refused: 0 } } as unknown as Prisma.InputJsonValue,
       proposals: ctx.created.length,
       summary: answer.content.slice(0, 8000),
+      promptTokens: answer.usage.promptTokens,
+      evalTokens: answer.usage.evalTokens,
     });
     await audit({ organizationId: client.organizationId, clientId, userId: opts.userId ?? null, action: "agent.run", targetType: "AgentRun", targetId: run.id, metadata: { trigger, proposals: ctx.created.length } });
     return done;

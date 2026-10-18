@@ -6,7 +6,7 @@ import { withOllamaLock } from "./ollama-gate";
 export { LlmBusyError } from "./ollama-gate";
 
 /** Depois do último pedido o modelo liberta a memória ao fim deste prazo, em vez de ficar carregado para sempre. */
-export const OLLAMA_KEEP_ALIVE = "10m";
+export const OLLAMA_KEEP_ALIVE = "30m";
 
 /** Cliente da API do Ollama (local). Nenhum pedido sai para fora desta máquina ou da rede local. */
 
@@ -25,10 +25,17 @@ export type LlmMessage =
   | { role: "assistant"; content: string; tool_calls?: { function: LlmToolCall }[] }
   | { role: "tool"; content: string; tool_name: string };
 
+/** Contagens do Ollama no último bloco da resposta (0 se não vierem). */
+export interface LlmUsage {
+  promptTokens: number;
+  evalTokens: number;
+  durationMs: number;
+}
+
 export interface ChatResult {
   content: string;
   toolCalls: LlmToolCall[];
-  evalCount: number | null;
+  usage: LlmUsage;
 }
 
 export interface ChatOptions {
@@ -42,6 +49,8 @@ export interface ChatOptions {
   temperature?: number;
   /** Força a resposta a ser um objeto JSON. */
   json?: boolean;
+  /** Janela de contexto (num_ctx); por omissão CONTEXT_TOKENS. */
+  contextTokens?: number;
 }
 
 export interface Llm {
@@ -70,11 +79,11 @@ export async function agentConfig() {
   const c = await getConfig();
   const url = ollamaReachableUrl(c.OLLAMA_URL);
   if (!isLocalUrl(url)) throw new LlmUnavailableError("O URL do Ollama tem de ser local (localhost ou rede privada).");
-  return { url, model: c.AGENT_MODEL };
+  return { url, model: c.AGENT_MODEL, contextTokens: c.AGENT_CONTEXT_TOKENS };
 }
 
 /** Carrega o modelo se ainda não estiver em memória. Não bloqueia quem chamou e não o deixa preso para sempre. */
-export function warmOllama(url: string, model: string, fetchImpl: typeof fetch = fetch) {
+export function warmOllama(url: string, model: string, fetchImpl: typeof fetch = fetch, contextTokens = CONTEXT_TOKENS) {
   const stop = AbortSignal.timeout(120_000);
   void fetchImpl(`${url}/api/ps`, { signal: AbortSignal.timeout(2_000), cache: "no-store" })
     .then(async (ps) => {
@@ -86,7 +95,7 @@ export function warmOllama(url: string, model: string, fetchImpl: typeof fetch =
       await fetchImpl(`${url}/api/generate`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ model, prompt: "", keep_alive: OLLAMA_KEEP_ALIVE, stream: false, options: { num_ctx: CONTEXT_TOKENS } }),
+        body: JSON.stringify({ model, prompt: "", keep_alive: OLLAMA_KEEP_ALIVE, stream: false, options: { num_ctx: contextTokens } }),
         signal: stop,
       });
     })
@@ -112,7 +121,7 @@ export async function ollamaStatus(fetchImpl: typeof fetch = fetch): Promise<Oll
     const body = (await res.json()) as { models?: { name: string }[] };
     const models = (body.models ?? []).map((m) => m.name);
     const has = models.some((m) => m === cfg.model || m === `${cfg.model}:latest`);
-    if (has) warmOllama(cfg.url, cfg.model, fetchImpl);
+    if (has) warmOllama(cfg.url, cfg.model, fetchImpl, cfg.contextTokens);
     return has
       ? { ok: true, message: `Ollama ativo com o modelo ${cfg.model}.`, models }
       : { ok: false, message: `O Ollama está ativo, mas o modelo ${cfg.model} não está instalado (ollama pull ${cfg.model}).`, models };
@@ -124,7 +133,9 @@ export async function ollamaStatus(fetchImpl: typeof fetch = fetch): Promise<Oll
 interface OllamaChunk {
   message?: { content?: string; tool_calls?: { function: { name: string; arguments: Record<string, unknown> | string } }[] };
   done?: boolean;
+  prompt_eval_count?: number;
   eval_count?: number;
+  total_duration?: number;
   error?: string;
 }
 
@@ -142,6 +153,7 @@ export function ollamaLlm(url: string, model: string, fetchImpl: typeof fetch = 
   return {
     model,
     async chat(messages, opts = {}) {
+      const numCtx = opts.contextTokens ?? CONTEXT_TOKENS;
       const timeout = AbortSignal.timeout(opts.timeoutMs ?? 180_000);
       const signal = opts.signal ? AbortSignal.any([opts.signal, timeout]) : timeout;
       let res: Response;
@@ -156,7 +168,7 @@ export function ollamaLlm(url: string, model: string, fetchImpl: typeof fetch = 
             stream: true,
             keep_alive: OLLAMA_KEEP_ALIVE,
             format: opts.json ? "json" : undefined,
-            options: { temperature: opts.temperature ?? 0.2, repeat_penalty: 1.1, num_predict: Math.min(opts.maxTokens ?? RESERVE_TOKENS, CONTEXT_TOKENS - 256), num_ctx: CONTEXT_TOKENS },
+            options: { temperature: opts.temperature ?? 0.2, repeat_penalty: 1.1, num_predict: Math.min(opts.maxTokens ?? RESERVE_TOKENS, numCtx - 256), num_ctx: numCtx },
           }),
           signal,
         });
@@ -172,7 +184,7 @@ export function ollamaLlm(url: string, model: string, fetchImpl: typeof fetch = 
       let buf = "";
       let content = "";
       const toolCalls: LlmToolCall[] = [];
-      let evalCount: number | null = null;
+      const usage: LlmUsage = { promptTokens: 0, evalTokens: 0, durationMs: 0 };
       const handle = (line: string) => {
         if (!line.trim()) return;
         const chunk = JSON.parse(line) as OllamaChunk;
@@ -183,7 +195,11 @@ export function ollamaLlm(url: string, model: string, fetchImpl: typeof fetch = 
           opts.onToken?.(piece);
         }
         for (const tc of chunk.message?.tool_calls ?? []) toolCalls.push({ name: tc.function.name, arguments: parseArgs(tc.function.arguments) });
-        if (chunk.done) evalCount = chunk.eval_count ?? null;
+        if (chunk.done) {
+          usage.promptTokens = chunk.prompt_eval_count ?? 0;
+          usage.evalTokens = chunk.eval_count ?? 0;
+          usage.durationMs = Math.round((chunk.total_duration ?? 0) / 1e6);
+        }
       };
       for (;;) {
         const { value, done } = await reader.read();
@@ -196,7 +212,7 @@ export function ollamaLlm(url: string, model: string, fetchImpl: typeof fetch = 
         }
       }
       handle(buf);
-      return { content, toolCalls, evalCount };
+      return { content, toolCalls, usage };
     },
   };
 }

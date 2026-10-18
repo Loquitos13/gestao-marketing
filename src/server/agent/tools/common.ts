@@ -33,8 +33,20 @@ export interface AgentTool<S extends z.ZodTypeAny = z.ZodTypeAny> {
   run: (ctx: AgentCtx, args: z.infer<S>) => Promise<unknown>;
 }
 
-/** Os argumentos são sempre validados com `schema` antes de `run`, por isso o tipo pode ser apagado no registo. */
-export const defineTool = <S extends z.ZodTypeAny>(t: AgentTool<S>): AgentTool => t as unknown as AgentTool;
+/** Os argumentos são sempre validados com `schema` antes de `run`, por isso o tipo pode ser apagado no registo. O resultado passa por `lean`. */
+export const defineTool = <S extends z.ZodTypeAny>(t: AgentTool<S>): AgentTool => ({ ...t, run: async (ctx: AgentCtx, args: z.infer<S>) => lean(await t.run(ctx, args)) }) as unknown as AgentTool;
+
+/** Resultado sem nulos, indefinidos e listas vazias, com números a 2 decimais: menos tokens para o modelo, a mesma informação. */
+export function lean(v: unknown): unknown {
+  if (typeof v === "number") return Number.isFinite(v) ? Math.round(v * 100) / 100 : v;
+  if (Array.isArray(v)) return v.map(lean);
+  if (v && typeof v === "object" && !(v instanceof Date)) {
+    const out: Record<string, unknown> = {};
+    for (const [k, x] of Object.entries(v)) if (x !== null && x !== undefined && !(Array.isArray(x) && !x.length)) out[k] = lean(x);
+    return out;
+  }
+  return v;
+}
 
 /**
  * Texto vindo das plataformas ou de terceiros (nomes, anúncios, publicações, páginas de concorrentes):

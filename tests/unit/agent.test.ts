@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { Client } from "@prisma/client";
 import { backtestHoltWinters, fitHoltWinters, forecast, wape } from "@/server/agent/ml/forecast";
@@ -7,13 +7,18 @@ import { detectAnomalies, robustZ, seasonalNaive } from "@/server/agent/ml/anoma
 import { approvalProbability, describeFeature, featuresOf, strongestObjection, trainPreference, type Example } from "@/server/agent/ml/preference";
 import { extractNumbers, parseNumber, verifyNumbers } from "@/server/agent/grounding";
 import { defineTool, untrusted, type AgentCtx } from "@/server/agent/tools/common";
-import { runAgent, MAX_ROUNDS, toolSpecs, ALL_TOOLS } from "@/server/agent/runner";
+import { runAgent, systemPrompt, MAX_ROUNDS, toolSpecs, ALL_TOOLS } from "@/server/agent/runner";
 import { packContext, CONTEXT_TOKENS, RESERVE_TOKENS, estimateTokens } from "@/server/agent/context-window";
 import { ollamaLlm, ollamaReachableUrl, type Llm, type LlmMessage } from "@/server/agent/llm";
 import { acquireLocal, LlmBusyError } from "@/server/agent/ollama-gate";
 import { partialJsonStrings } from "@/server/agent/json-partial";
 import { suggestionOutcome } from "@/server/agent/outcomes";
 import { isLocalUrl } from "@/server/config/definitions";
+
+vi.mock("@/lib/prisma", () => {
+  const none = async () => [];
+  return { prisma: { appSetting: { findMany: none }, goal: { findMany: none }, agentMemory: { findMany: none } } };
+});
 
 /** Gerador determinístico (LCG) para ruído reprodutível. */
 function rng(seed = 42) {
@@ -148,7 +153,7 @@ function scripted(steps: { content?: string; toolCalls?: { name: string; argumen
     async chat(messages, opts) {
       seen.push({ messages: [...messages], tools: !!opts?.tools?.length });
       const s = steps[Math.min(i++, steps.length - 1)]!;
-      return { content: s.content ?? "", toolCalls: opts?.tools?.length ? (s.toolCalls ?? []) : [], evalCount: null };
+      return { content: s.content ?? "", toolCalls: opts?.tools?.length ? (s.toolCalls ?? []) : [], usage: { promptTokens: 0, evalTokens: 0, durationMs: 0 } };
     },
   };
   return { llm, seen };
@@ -206,7 +211,7 @@ describe("cliente Ollama", () => {
     const lines = [
       { message: { content: "Olá " } },
       { message: { content: "", tool_calls: [{ function: { name: "get_kpis", arguments: { days: 30 } } }] } },
-      { message: { content: "mundo" }, done: true, eval_count: 5 },
+      { message: { content: "mundo" }, done: true, prompt_eval_count: 40, eval_count: 5, total_duration: 1_500_000_000 },
     ];
     let body: { model: string; stream: boolean } | null = null;
     const f = (async (_url: string, init: RequestInit) => {
@@ -215,9 +220,9 @@ describe("cliente Ollama", () => {
     }) as unknown as typeof fetch;
     const tokens: string[] = [];
     const r = await ollamaLlm("http://127.0.0.1:11434", "qwen", f).chat([{ role: "user", content: "x" }], { onToken: (t) => tokens.push(t) });
-    expect(r).toEqual({ content: "Olá mundo", toolCalls: [{ name: "get_kpis", arguments: { days: 30 } }], evalCount: 5 });
+    expect(r).toEqual({ content: "Olá mundo", toolCalls: [{ name: "get_kpis", arguments: { days: 30 } }], usage: { promptTokens: 40, evalTokens: 5, durationMs: 1500 } });
     expect(tokens).toEqual(["Olá ", "mundo"]);
-    expect(body).toMatchObject({ model: "qwen", stream: true, keep_alive: "10m", options: { repeat_penalty: 1.1, num_ctx: CONTEXT_TOKENS, num_predict: RESERVE_TOKENS } });
+    expect(body).toMatchObject({ model: "qwen", stream: true, keep_alive: "30m", options: { repeat_penalty: 1.1, num_ctx: CONTEXT_TOKENS, num_predict: RESERVE_TOKENS } });
   });
 });
 
@@ -297,5 +302,60 @@ describe("um só pedido ao modelo de cada vez", () => {
     first();
     const again = await acquireLocal(1_000);
     again();
+  });
+});
+
+describe("resultados leves e resumo da conversa", () => {
+  it("lean tira nulos e listas vazias e arredonda a 2 decimais", async () => {
+    const { lean } = await import("@/server/agent/tools/common");
+    expect(lean({ a: null, b: undefined, c: [], d: 1.2345, e: { f: null, g: [null, 2.005] }, h: "", i: false })).toEqual({ d: 1.23, e: { g: [null, 2.01] }, h: "", i: false });
+  });
+
+  it("os resultados das ferramentas passam por lean antes de chegar ao modelo", async () => {
+    const t = defineTool({ name: "t", label: () => "t", description: "x", parameters: {}, schema: z.object({}), kind: "read", run: async () => ({ v: 1.999, nada: null }) });
+    expect(await t.run(ctx, {})).toEqual({ v: 2 });
+  });
+
+  it("só resume com mais de 8 mensagens por resumir e mantém a cauda textual", async () => {
+    const { needsSummary, buildHistory } = await import("@/server/agent/chat");
+    expect(needsSummary(8, 0)).toBe(false);
+    expect(needsSummary(9, 0)).toBe(true);
+    expect(needsSummary(20, 12)).toBe(false);
+    const tail = Array.from({ length: 10 }, (_, i) => ({ role: i % 2 ? "assistant" : "user", content: `m${i}` }));
+    expect(buildHistory(null, tail).map((m) => m.content)).toEqual(["m4", "m5", "m6", "m7", "m8", "m9"]);
+    const h = buildHistory("já falámos de X", tail.slice(-3));
+    expect(h[0]).toEqual({ role: "system", content: "Resumo da conversa até aqui: já falámos de X" });
+    expect(h.slice(1).map((m) => [m.role, m.content])).toEqual([["assistant", "m7"], ["user", "m8"], ["assistant", "m9"]]);
+  });
+});
+
+describe("janela configurável e prefixo estável do prompt", () => {
+  const specs = toolSpecs(ALL_TOOLS);
+  const big = "n".repeat(30_000);
+  const msgs = (): LlmMessage[] => [
+    { role: "system", content: "regras" },
+    { role: "user", content: "Como está o SEO orgânico?" },
+    { role: "assistant", content: "", tool_calls: [{ function: { name: "get_seo", arguments: {} } }] },
+    { role: "tool", tool_name: "get_seo", content: big },
+  ];
+  const size = (ctxTokens: number) => {
+    const p = packContext(msgs(), specs, ["get_seo"], ctxTokens);
+    return p.messages.reduce((n, m) => n + m.content.length, 0) + JSON.stringify(p.tools).length;
+  };
+
+  it("com 8192 tokens cabe cerca do dobro do que com 4096", () => {
+    const ratio = size(8192) / size(4096);
+    expect(ratio).toBeGreaterThan(1.7);
+    expect(ratio).toBeLessThan(2.3);
+  });
+
+  it("o prompt de sistema começa igual para clientes e dias diferentes", async () => {
+    const mk = (name: string, currency: string, timezone: string) => ({ ...ctx, client: { id: name, name, currency, timezone } as Client });
+    const a = await systemPrompt(mk("Loja Azul", "EUR", "Europe/Lisbon"), "chat");
+    const b = await systemPrompt(mk("Clínica Sol Nascente", "BRL", "Pacific/Kiritimati"), "chat");
+    let i = 0;
+    while (i < a.length && a[i] === b[i]) i++;
+    expect(i).toBeGreaterThanOrEqual(0.6 * Math.max(a.length, b.length));
+    expect(a.indexOf("Cliente:")).toBeGreaterThan(a.indexOf("Regras:"));
   });
 });

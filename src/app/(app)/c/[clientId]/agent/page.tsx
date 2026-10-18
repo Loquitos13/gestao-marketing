@@ -27,7 +27,7 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
     prisma.agentConversation.findMany({ where: { clientId: client.id, userId: tenant.userId }, orderBy: { updatedAt: "desc" }, take: 12, select: { id: true, title: true, updatedAt: true } }),
     prisma.agentMemory.findMany({ where: { clientId: client.id }, orderBy: { createdAt: "asc" } }),
     prisma.agentModel.findMany({ where: { clientId: client.id }, orderBy: [{ kind: "asc" }, { scope: "asc" }] }),
-    prisma.agentRun.findMany({ where: { clientId: client.id }, orderBy: { startedAt: "desc" }, take: 8 }),
+    prisma.agentRun.findMany({ where: { clientId: client.id }, orderBy: { startedAt: "desc" }, take: 20 }),
     prisma.agentPreference.findUnique({ where: { organizationId: tenant.organizationId } }),
     redisUrl ? workerIsRunning(redisUrl) : Promise.resolve(false),
   ]);

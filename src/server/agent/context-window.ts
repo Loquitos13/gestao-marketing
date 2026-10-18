@@ -1,7 +1,7 @@
 import type { LlmMessage, ToolSpec } from "./llm";
 
 /**
- * Janela fixa. O Ollama reserva a cache de contexto para `num_ctx` completo,
+ * Janela por omissão (a efetiva vem de AGENT_CONTEXT_TOKENS). O Ollama reserva a cache de contexto para `num_ctx` completo,
  * por isso a janela não cresce quando sobra espaço: o que não é essencial fica de fora.
  */
 export const CONTEXT_TOKENS = 4096;
@@ -19,10 +19,10 @@ const HINTS: Record<string, string[]> = {
   get_kpis: ["kpi", "roas", "cpa", "ctr", "investimento", "convers", "desempenho", "campanha", "resultado"],
   get_campaigns: ["campanha", "orcamento", "anuncio", "grupo"],
   get_ads: ["anuncio", "criativo", "titulo", "descricao"],
-  get_budget_pacing: ["orcamento", "ritmo", "pacing", "gasto"],
-  get_seo: ["seo", "organico", "search console", "consulta", "posicao"],
-  get_forecast: ["previs", "forecast", "tendenc"],
-  get_response_curve: ["curva", "what-if", "aumentar o investimento", "reduzir o investimento"],
+  get_budget_pacing: ["orcamento", "ritmo", "pacing", "gasto", "gastamos", "acima", "abaixo", "previsto para o mes", "este mes", "mensal"],
+  get_seo: ["seo", "organico", "search console", "consulta", "posicao", "trafego", "cliques"],
+  get_forecast: ["previs", "forecast", "tendenc", "proximos"],
+  get_response_curve: ["curva", "what-if", "e se", "aumentar", "aumentassemos", "reduzir", "reduzissemos", "o que acontec", "orcamento da campanha"],
   get_alerts_recommendations: ["alerta", "recomend"],
   get_notes_tasks: ["nota", "tarefa"],
   get_competitors: ["concorrent"],
@@ -39,8 +39,8 @@ export function estimateTokens(text: string): number {
   return Math.ceil(text.length / CHARS_PER_TOKEN);
 }
 
-export function inputCharBudget(reserveTokens = RESERVE_TOKENS): number {
-  return Math.max(0, CONTEXT_TOKENS - reserveTokens) * CHARS_PER_TOKEN;
+export function inputCharBudget(reserveTokens = RESERVE_TOKENS, contextTokens = CONTEXT_TOKENS): number {
+  return Math.max(0, contextTokens - reserveTokens) * CHARS_PER_TOKEN;
 }
 
 function fold(text: string): string {
@@ -140,7 +140,8 @@ export function selectTools(tools: ToolSpec[], focus: string, pinned: string[], 
     chosen.push(s.t);
     used += size;
   }
-  return chosen;
+  // ordem fixa (a da lista de ferramentas) para o prefixo do pedido não mudar entre rondas e a cache do Ollama servir
+  return chosen.sort((a, b) => tools.indexOf(a) - tools.indexOf(b));
 }
 
 export interface PackedContext {
@@ -152,8 +153,8 @@ export interface PackedContext {
  * Reparte a janela entre sistema, ferramentas, histórico recente e resultados.
  * O orçamento que uma parte não usa não é enchido com texto a mais.
  */
-export function packContext(messages: LlmMessage[], tools?: ToolSpec[], pinned: string[] = []): PackedContext {
-  const budget = shareChars(inputCharBudget());
+export function packContext(messages: LlmMessage[], tools?: ToolSpec[], pinned: string[] = [], contextTokens = CONTEXT_TOKENS): PackedContext {
+  const budget = shareChars(inputCharBudget(RESERVE_TOKENS, contextTokens));
   const system = messages.find((m) => m.role === "system");
   const rest = messages.filter((m) => m !== system);
   const history: LlmMessage[] = [];
