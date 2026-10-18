@@ -1,0 +1,1223 @@
+// Marketing Intelligence Hub — modelo de dados
+// Convenções:
+//  - Timestamps (DateTime sem @db.Date) em UTC.
+//  - Datas de métricas (@db.Date) representam o "dia de reporte" no fuso horário da conta de origem.
+//  - Valores monetários em Decimal(18,4) na moeda de origem (campo currency).
+//  - Toda a tabela de dados de clientes tem clientId para isolamento multi-tenant.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────── Identidade e tenancy ─────────────────────────
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  ANALYST
+  VIEWER
+}
+
+model User {
+  id           String               @id @default(cuid())
+  email        String               @unique
+  name         String
+  passwordHash String
+  locale       String               @default("pt-PT")
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  lastLoginAt  DateTime?
+  memberships  OrganizationMember[]
+  clientAccess ClientMember[]
+  sessions     Session[]
+  auditLogs    AuditLog[]
+  tasksAssigned ClientTask[] @relation("TaskAssignee")
+  tasksCreated  ClientTask[] @relation("TaskCreator")
+  notes         ClientNote[]
+  files         ClientFile[]
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+  userAgent  String?
+  ipHash     String?
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Organization {
+  id                String               @id @default(cuid())
+  name              String
+  slug              String               @unique
+  brandColor        String               @default("#4f46e5")
+  logoUrl           String?
+  defaultCurrency   String               @default("EUR")
+  defaultTimezone   String               @default("Europe/Lisbon")
+  dataRetentionDays Int                  @default(1095)
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  members           OrganizationMember[]
+  clients           Client[]
+  auditLogs         AuditLog[]
+  reportTemplates   ReportTemplate[]
+  oauthCredentials  OAuthCredential[]
+}
+
+model OrganizationMember {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           OrgRole
+  createdAt      DateTime     @default(now())
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+}
+
+/// Acesso explícito a clientes para membros com papel VIEWER (ex.: portal do cliente).
+model ClientMember {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([clientId, userId])
+  @@index([userId])
+}
+
+// ───────────────────────── Clientes ─────────────────────────
+
+enum ContractStatus {
+  PROSPECT
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+model Client {
+  id               String         @id @default(cuid())
+  organizationId   String
+  organization     Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name             String
+  slug             String
+  logoUrl          String?
+  website          String?
+  industry         String?
+  contactName      String?
+  contactEmail     String?
+  contactPhone     String?
+  objectives       String?
+  monthlyBudget    Decimal?       @db.Decimal(18, 2)
+  /// Margem bruta média (0..1). Sem este valor o ROI não é calculado.
+  grossMargin      Decimal?       @db.Decimal(5, 4)
+  currency         String         @default("EUR")
+  timezone         String         @default("Europe/Lisbon")
+  locale           String         @default("pt-PT")
+  internalNotes    String?
+  contractStatus   ContractStatus @default(ACTIVE)
+  isDemo           Boolean        @default(false)
+  /// Gestão de anúncios (escrita nas plataformas). Desligada por omissão; cada alteração exige confirmação.
+  adsManagementEnabled Boolean    @default(false)
+  /// Variação máxima de orçamento por alteração (0..0.5).
+  maxBudgetStepPct Decimal        @default(0.2) @db.Decimal(4, 3)
+  archivedAt       DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  members          ClientMember[]
+  dataSources      DataSource[]
+  campaigns        Campaign[]
+  budgets          Budget[]
+  goals            Goal[]
+  reports          Report[]
+  reportSchedules  ReportSchedule[]
+  recommendations  Recommendation[]
+  alertRules       AlertRule[]
+  alerts           Alert[]
+  organicContent   OrganicContent[]
+  auditLogs        AuditLog[]
+  tasks            ClientTask[]
+  notes            ClientNote[]
+  files            ClientFile[]
+  adChanges        AdChange[]
+  agentModels      AgentModel[]
+  agentRuns        AgentRun[]
+  agentConversations AgentConversation[]
+  agentMemories    AgentMemory[]
+  competitors      Competitor[]
+  /// Estado da última recolha por fonte de concorrência: { [fonte]: { status, message, at } }.
+  competitorStatus Json?
+
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+}
+
+// ───────────────────────── Integrações ─────────────────────────
+
+enum Provider {
+  GOOGLE
+  META
+  SEMRUSH
+  DEMO
+}
+
+enum Platform {
+  GOOGLE_ADS
+  META_ADS
+  SEARCH_CONSOLE
+  GA4
+  META_ORGANIC
+  SEMRUSH
+}
+
+enum DataOrigin {
+  REAL
+  SIMULATED
+}
+
+enum DataSourceStatus {
+  ACTIVE
+  PAUSED
+  ERROR
+  DISCONNECTED
+}
+
+/// Credenciais OAuth de um utilizador numa organização. Tokens sempre encriptados (AES-256-GCM).
+model OAuthCredential {
+  id                    String       @id @default(cuid())
+  organizationId        String
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  provider              Provider
+  externalUserId        String?
+  externalUserName      String?
+  scopes                String[]
+  accessTokenEnc        String?
+  refreshTokenEnc       String?
+  accessTokenExpiresAt  DateTime?
+  status                String       @default("ACTIVE") // ACTIVE | EXPIRED | REVOKED | ERROR
+  lastRefreshedAt       DateTime?
+  lastError             String?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  connectedAccounts     ConnectedAccount[]
+
+  @@index([organizationId, provider])
+}
+
+/// Conta externa acessível através de uma credencial (cliente Google Ads, conta Meta, propriedade GA4, site GSC).
+model ConnectedAccount {
+  id             String          @id @default(cuid())
+  credentialId   String
+  credential     OAuthCredential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+  platform       Platform
+  externalId     String
+  name           String
+  currency       String?
+  timezone       String?
+  managerId      String?         // login-customer-id (Google Ads MCC)
+  metadata       Json?
+  discoveredAt   DateTime        @default(now())
+  dataSources    DataSource[]
+
+  @@unique([credentialId, platform, externalId])
+}
+
+/// Ligação de uma conta externa (ou fonte simulada) a um cliente.
+model DataSource {
+  id                  String            @id @default(cuid())
+  clientId            String
+  client              Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  connectedAccountId  String?
+  connectedAccount    ConnectedAccount? @relation(fields: [connectedAccountId], references: [id], onDelete: SetNull)
+  platform            Platform
+  origin              DataOrigin        @default(REAL)
+  externalId          String
+  name                String
+  currency            String
+  timezone            String
+  status              DataSourceStatus  @default(ACTIVE)
+  lastSyncAt          DateTime?
+  lastSuccessfulSyncAt DateTime?
+  dataAvailableUntil  DateTime?         @db.Date
+  historyStartDate    DateTime?         @db.Date
+  lastError           String?
+  settings            Json?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  syncJobs            SyncJob[]
+  campaigns           Campaign[]
+  adMetrics           AdMetricDaily[]
+  breakdowns          CampaignBreakdownDaily[]
+  adsTerms            AdsTermDaily[]
+  searchMetrics       SearchMetricDaily[]
+  webMetrics          WebAnalyticsDaily[]
+  seoSnapshots        SeoKeywordSnapshot[]
+  organicContent      OrganicContent[]
+  performanceSnapshots PerformanceSnapshot[]
+  adChanges           AdChange[]
+
+  @@unique([clientId, platform, externalId])
+  @@index([clientId, platform])
+}
+
+enum SyncJobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  PARTIAL
+  FAILED
+}
+
+enum SyncKind {
+  INCREMENTAL
+  HISTORICAL
+  ENTITIES
+}
+
+model SyncJob {
+  id           String        @id @default(cuid())
+  dataSourceId String
+  dataSource   DataSource    @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  kind         SyncKind
+  status       SyncJobStatus @default(QUEUED)
+  rangeStart   DateTime?     @db.Date
+  rangeEnd     DateTime?     @db.Date
+  attempts     Int           @default(0)
+  rowsUpserted Int           @default(0)
+  requestedBy  String?
+  error        String?
+  queuedAt     DateTime      @default(now())
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  logs         SyncLog[]
+
+  @@index([dataSourceId, queuedAt])
+  @@index([status])
+}
+
+model SyncLog {
+  id        String   @id @default(cuid())
+  syncJobId String
+  syncJob   SyncJob  @relation(fields: [syncJobId], references: [id], onDelete: Cascade)
+  level     String   // info | warn | error
+  message   String
+  context   Json?
+  createdAt DateTime @default(now())
+
+  @@index([syncJobId])
+}
+
+// ───────────────────────── Entidades publicitárias ─────────────────────────
+
+model Campaign {
+  id              String     @id @default(cuid())
+  clientId        String
+  client          Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  dataSourceId    String
+  dataSource      DataSource @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  platform        Platform
+  externalId      String
+  name            String
+  status          String
+  objective       String?    // Meta: objective; Google: advertising_channel_type
+  campaignType    String?
+  biddingStrategy String?
+  dailyBudget     Decimal?   @db.Decimal(18, 4)
+  startDate       DateTime?  @db.Date
+  endDate         DateTime?  @db.Date
+  raw             Json?
+  updatedAt       DateTime   @updatedAt
+  adGroups        AdGroup[]
+  budgets         Budget[]
+
+  @@unique([dataSourceId, externalId])
+  @@index([clientId, platform])
+}
+
+/// Google Ads: ad group. Meta Ads: ad set.
+model AdGroup {
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  externalId String
+  name       String
+  status     String
+  targeting  Json?
+  /// Meta: orçamento do conjunto (ABO). Google: sempre nulo (orçamento na campanha).
+  dailyBudget Decimal? @db.Decimal(18, 4)
+  raw        Json?
+  updatedAt  DateTime @updatedAt
+  ads        Ad[]
+
+  @@unique([campaignId, externalId])
+}
+
+model Ad {
+  id          String    @id @default(cuid())
+  adGroupId   String
+  adGroup     AdGroup   @relation(fields: [adGroupId], references: [id], onDelete: Cascade)
+  externalId  String
+  name        String
+  status      String
+  adType      String?
+  finalUrl    String?
+  headlines   String[]
+  descriptions String[]
+  creativeId  String?
+  creative    Creative? @relation(fields: [creativeId], references: [id], onDelete: SetNull)
+  createdTime DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([adGroupId, externalId])
+  @@index([creativeId])
+}
+
+model Creative {
+  id           String   @id @default(cuid())
+  dataSourceId String
+  externalId   String
+  format       String?  // IMAGE | VIDEO | CAROUSEL | TEXT
+  primaryText  String?
+  title        String?
+  description  String?
+  callToAction String?
+  imageUrl     String?
+  videoId      String?
+  thumbnailUrl String?
+  postId       String?  // effective_object_story_id quando suportado
+  updatedAt    DateTime @updatedAt
+  ads          Ad[]
+
+  @@unique([dataSourceId, externalId])
+}
+
+// ───────────────────────── Métricas (séries temporais) ─────────────────────────
+
+enum MetricLevel {
+  ACCOUNT
+  CAMPAIGN
+  AD_GROUP
+  AD
+}
+
+/// Métricas diárias de plataformas pagas. Uma linha por (fonte, nível, entidade, dia).
+/// Campos nulos = métrica não disponível na fonte (nunca 0 por omissão).
+/// reach é não aditivo entre dias: somas são marcadas como aproximação na camada de consulta.
+model AdMetricDaily {
+  id                 String      @id @default(cuid())
+  clientId           String
+  dataSourceId       String
+  dataSource         DataSource  @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  platform           Platform
+  level              MetricLevel
+  campaignExternalId String
+  adGroupExternalId  String      @default("") // "" = não aplicável (evita NULL em chave única)
+  adExternalId       String      @default("")
+  date               DateTime    @db.Date
+  currency           String
+  impressions        BigInt      @default(0)
+  clicks             BigInt      @default(0)
+  cost               Decimal     @default(0) @db.Decimal(18, 4)
+  interactions       BigInt?
+  reach              BigInt?
+  linkClicks         BigInt?
+  outboundClicks     BigInt?
+  landingPageViews   BigInt?
+  conversions        Decimal?    @db.Decimal(18, 4)
+  allConversions     Decimal?    @db.Decimal(18, 4)
+  conversionValue    Decimal?    @db.Decimal(18, 4)
+  allConversionValue Decimal?    @db.Decimal(18, 4)
+  leads              Decimal?    @db.Decimal(18, 4)
+  purchases          Decimal?    @db.Decimal(18, 4)
+  purchaseValue      Decimal?    @db.Decimal(18, 4)
+  videoViews         BigInt?
+  thruplays          BigInt?
+  videoP25           BigInt?
+  videoP50           BigInt?
+  videoP75           BigInt?
+  videoP100          BigInt?
+  engagements        BigInt?
+  reactions          BigInt?
+  comments           BigInt?
+  shares             BigInt?
+  messages           BigInt?
+  calls              BigInt?
+  // Quotas de impressões (0..1) — só nível CAMPAIGN em Search/Shopping; não aditivas.
+  searchImpressionShare     Decimal? @db.Decimal(7, 6)
+  searchLostIsBudget        Decimal? @db.Decimal(7, 6)
+  searchLostIsRank          Decimal? @db.Decimal(7, 6)
+  eligibleImpressionsApprox BigInt?  // impressões/quota, usado para média ponderada
+  extra              Json?
+  fetchedAt          DateTime    @default(now())
+
+  @@unique([dataSourceId, level, campaignExternalId, adGroupExternalId, adExternalId, date], name: "metric_identity")
+  @@index([clientId, platform, level, date])
+  @@index([dataSourceId, date])
+}
+
+/// Repartição por dimensão (dispositivo, país, rede) ao nível da campanha.
+model CampaignBreakdownDaily {
+  id                 String     @id @default(cuid())
+  clientId           String
+  dataSourceId       String
+  dataSource         DataSource @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  platform           Platform
+  campaignExternalId String
+  date               DateTime   @db.Date
+  dimension          String     // DEVICE | COUNTRY | NETWORK | PUBLISHER_PLATFORM
+  value              String
+  currency           String
+  impressions        BigInt     @default(0)
+  clicks             BigInt     @default(0)
+  cost               Decimal    @default(0) @db.Decimal(18, 4)
+  conversions        Decimal?   @db.Decimal(18, 4)
+  conversionValue    Decimal?   @db.Decimal(18, 4)
+  leads              Decimal?   @db.Decimal(18, 4)
+
+  @@unique([dataSourceId, campaignExternalId, date, dimension, value])
+  @@index([clientId, dimension, date])
+}
+
+/// Google Ads: palavras-chave e termos de pesquisa.
+model AdsTermDaily {
+  id                 String     @id @default(cuid())
+  clientId           String
+  dataSourceId       String
+  dataSource         DataSource @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  kind               String     // KEYWORD | SEARCH_TERM
+  campaignExternalId String
+  adGroupExternalId  String
+  text               String
+  matchType          String     @default("")
+  date               DateTime   @db.Date
+  currency           String
+  impressions        BigInt     @default(0)
+  clicks             BigInt     @default(0)
+  cost               Decimal    @default(0) @db.Decimal(18, 4)
+  conversions        Decimal?   @db.Decimal(18, 4)
+  conversionValue    Decimal?   @db.Decimal(18, 4)
+
+  @@unique([dataSourceId, kind, adGroupExternalId, text, matchType, date])
+  @@index([clientId, kind, date])
+}
+
+/// Google Search Console. dimension: TOTAL | QUERY | PAGE | DEVICE | COUNTRY | APPEARANCE.
+/// A soma de QUERY não iguala TOTAL (consultas anonimizadas) — por isso TOTAL é guardado à parte.
+/// position = posição média ponderada por impressões (guardamos positionSum = position*impressions).
+model SearchMetricDaily {
+  id           String     @id @default(cuid())
+  clientId     String
+  dataSourceId String
+  dataSource   DataSource @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  dimension    String
+  key          String
+  date         DateTime   @db.Date
+  clicks       Int        @default(0)
+  impressions  Int        @default(0)
+  positionSum  Float      @default(0)
+
+  @@unique([dataSourceId, dimension, key, date])
+  @@index([clientId, dimension, date])
+}
+
+/// Google Analytics 4. dimension: TOTAL | CHANNEL | SOURCE_MEDIUM | CAMPAIGN | LANDING_PAGE | DEVICE | COUNTRY.
+/// users/newUsers não são aditivos entre dias — somas assinaladas como aproximação.
+model WebAnalyticsDaily {
+  id               String     @id @default(cuid())
+  clientId         String
+  dataSourceId     String
+  dataSource       DataSource @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  dimension        String
+  key              String
+  date             DateTime   @db.Date
+  currency         String
+  users            Int?
+  newUsers         Int?
+  sessions         Int        @default(0)
+  engagedSessions  Int?
+  views            Int?
+  events           Int?
+  keyEvents        Float?
+  purchases        Float?
+  revenue          Decimal?   @db.Decimal(18, 4)
+  bounceRate       Float?
+
+  @@unique([dataSourceId, dimension, key, date])
+  @@index([clientId, dimension, date])
+}
+
+/// Dados de fornecedores SEO de terceiros (estimativas).
+model SeoKeywordSnapshot {
+  id            String     @id @default(cuid())
+  clientId      String
+  dataSourceId  String
+  dataSource    DataSource @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  provider      String
+  snapshotDate  DateTime   @db.Date
+  keyword       String?
+  position      Float?
+  searchVolume  Int?
+  url           String?
+  estTraffic    Float?
+  metricKey     String?    // ex.: backlinks, referring_domains, organic_keywords
+  metricValue   Float?
+  isEstimate    Boolean    @default(true)
+
+  @@index([clientId, snapshotDate])
+}
+
+/// Valores agregados oficiais para períodos (ex.: alcance exato de 30 dias devolvido pela API).
+model PerformanceSnapshot {
+  id           String     @id @default(cuid())
+  clientId     String
+  dataSourceId String
+  dataSource   DataSource @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  level        MetricLevel
+  entityExternalId String
+  periodStart  DateTime   @db.Date
+  periodEnd    DateTime   @db.Date
+  metrics      Json
+  fetchedAt    DateTime   @default(now())
+
+  @@unique([dataSourceId, level, entityExternalId, periodStart, periodEnd])
+}
+
+model OrganicContent {
+  id              String     @id @default(cuid())
+  clientId        String
+  client          Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  dataSourceId    String
+  dataSource      DataSource @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  platform        String     // FACEBOOK | INSTAGRAM | BLOG
+  externalId      String
+  url             String?
+  contentType     String?
+  title           String?
+  text            String?
+  mediaUrl        String?
+  publishedAt     DateTime?
+  impressions     Int?
+  reach           Int?
+  clicks          Int?
+  reactions       Int?
+  comments        Int?
+  shares          Int?
+  saves           Int?
+  videoViews      Int?
+  watchTimeSec    Int?
+  linkClicks      Int?
+  conversions     Float?
+  revenue         Decimal?   @db.Decimal(18, 4)
+  metricsAsOf     DateTime?
+  unavailable     String[]   // métricas que a fonte não disponibiliza
+
+  @@unique([dataSourceId, externalId])
+  @@index([clientId, publishedAt])
+}
+
+model ExchangeRate {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date
+  base      String
+  quote     String
+  rate      Decimal  @db.Decimal(18, 8)
+  source    String
+  createdAt DateTime @default(now())
+
+  @@unique([date, base, quote])
+}
+
+// ───────────────────────── Orçamento e objetivos ─────────────────────────
+
+model Budget {
+  id          String    @id @default(cuid())
+  clientId    String
+  client      Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  platform    Platform? // null = orçamento total
+  campaignId  String?
+  campaign    Campaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  periodStart DateTime  @db.Date
+  periodEnd   DateTime  @db.Date
+  amount      Decimal   @db.Decimal(18, 2)
+  currency    String
+  notes       String?
+  createdAt   DateTime  @default(now())
+
+  @@index([clientId, periodStart])
+}
+
+enum GoalMetric {
+  LEADS
+  CONVERSIONS
+  REVENUE
+  CPA_MAX
+  CPL_MAX
+  ROAS_MIN
+  CTR_MIN
+  SESSIONS
+  ORGANIC_CLICKS
+  AVG_POSITION_MAX
+}
+
+model Goal {
+  id          String     @id @default(cuid())
+  clientId    String
+  client      Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  metric      GoalMetric
+  platform    Platform?
+  target      Decimal    @db.Decimal(18, 4)
+  periodStart DateTime   @db.Date
+  periodEnd   DateTime   @db.Date
+  notes       String?
+  createdAt   DateTime   @default(now())
+
+  @@index([clientId])
+}
+
+// ───────────────────────── Relatórios ─────────────────────────
+
+model ReportTemplate {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  sections       String[]
+  isDefault      Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  reports        Report[]
+  schedules      ReportSchedule[]
+}
+
+enum ReportStatus {
+  DRAFT
+  GENERATED
+  FAILED
+}
+
+model Report {
+  id             String          @id @default(cuid())
+  clientId       String
+  client         Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  templateId     String?
+  template       ReportTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  title          String
+  kind           String          // WEEKLY | MONTHLY | QUARTERLY | YEARLY | CUSTOM
+  periodStart    DateTime        @db.Date
+  periodEnd      DateTime        @db.Date
+  compareStart   DateTime?       @db.Date
+  compareEnd     DateTime?       @db.Date
+  sections       String[]
+  comments       Json?           // { [sectionKey]: string }
+  status         ReportStatus    @default(DRAFT)
+  data           Json?           // snapshot congelado no momento da geração
+  containsSimulated Boolean      @default(false)
+  generatedAt    DateTime?
+  createdById    String?
+  shareTokenHash String?         @unique
+  shareExpiresAt DateTime?
+  scheduleId     String?
+  schedule       ReportSchedule? @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  deliveries     ReportDelivery[]
+
+  @@index([clientId, createdAt])
+}
+
+model ReportSchedule {
+  id          String          @id @default(cuid())
+  clientId    String
+  client      Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  templateId  String?
+  template    ReportTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  name        String
+  frequency   String          // WEEKLY | MONTHLY | QUARTERLY
+  dayOfWeek   Int?            // 1=segunda (WEEKLY)
+  hour        Int             @default(8)
+  recipients  String[]
+  enabled     Boolean         @default(true)
+  nextRunAt   DateTime
+  lastRunAt   DateTime?
+  createdAt   DateTime        @default(now())
+  reports     Report[]
+
+  @@index([enabled, nextRunAt])
+}
+
+model ReportDelivery {
+  id          String   @id @default(cuid())
+  reportId    String
+  report      Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  recipient   String
+  status      String   // PENDING | SENT | FAILED | SKIPPED_NOT_CONFIGURED
+  attempts    Int      @default(0)
+  error       String?
+  sentAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([reportId])
+}
+
+// ───────────────────────── Inteligência ─────────────────────────
+
+enum RecommendationStatus {
+  NEW
+  IN_REVIEW
+  APPROVED
+  DONE
+  DISMISSED
+}
+
+enum RecommendationSource {
+  RULE
+  STATISTICAL
+  AI
+}
+
+model Recommendation {
+  id           String               @id @default(cuid())
+  clientId     String
+  client       Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  fingerprint  String
+  type         String
+  source       RecommendationSource @default(RULE)
+  platform     Platform?
+  entityLevel  String?
+  entityId     String?
+  entityName   String?
+  title        String
+  explanation  String
+  suggestedAction String
+  priority     Int                  // 1 alta .. 3 baixa
+  confidence   String               // HIGH | MEDIUM | LOW
+  impactEstimate String?
+  evidence     Json
+  status       RecommendationStatus @default(NEW)
+  detectedAt   DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  decidedById  String?
+  decidedAt    DateTime?
+  decisionNote String?
+  executedExternally Boolean        @default(false)
+  /// Execução do agente que a gerou (source = AI).
+  agentRunId   String?
+
+  @@unique([clientId, fingerprint])
+  @@index([clientId, status])
+}
+
+model AlertRule {
+  id            String   @id @default(cuid())
+  clientId      String
+  client        Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  type          String   // CPA_INCREASE | CONVERSIONS_DROP | ORGANIC_DROP | POSITION_DROP | BUDGET_DEVIATION | SYNC_FAILURE | TOKEN_EXPIRED | STALE_DATA | CAMPAIGN_INACTIVE | KPI_CHANGE
+  name          String
+  platform      Platform?
+  threshold     Float
+  windowDays    Int      @default(7)
+  recipients    String[]
+  cooldownHours Int      @default(24)
+  enabled       Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  alerts        Alert[]
+
+  @@index([clientId])
+}
+
+model Alert {
+  id          String     @id @default(cuid())
+  clientId    String
+  client      Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  ruleId      String?
+  rule        AlertRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  type        String
+  fingerprint String
+  severity    String     // CRITICAL | WARNING | INFO
+  title       String
+  message     String
+  context     Json?
+  status      String     @default("OPEN") // OPEN | ACKNOWLEDGED | RESOLVED
+  occurrences Int        @default(1)
+  firstSeenAt DateTime   @default(now())
+  lastSeenAt  DateTime   @default(now())
+  lastNotifiedAt DateTime?
+  resolvedAt  DateTime?
+
+  @@unique([clientId, fingerprint])
+  @@index([clientId, status])
+}
+
+// ───────────────────────── Workspace do cliente ─────────────────────────
+
+enum TaskStatus {
+  OPEN
+  DONE
+}
+
+model ClientTask {
+  id          String     @id @default(cuid())
+  clientId    String
+  client      Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  /// Contexto livre (ex.: "Google Ads", "Relatórios").
+  area        String?
+  status      TaskStatus @default(OPEN)
+  priority    Int        @default(2) // 1 alta .. 3 baixa
+  dueDate     DateTime?  @db.Date
+  assigneeId  String?
+  assignee    User?      @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  createdById String?
+  createdBy   User?      @relation("TaskCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  completedAt DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([clientId, status, dueDate])
+}
+
+model ClientNote {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  body      String
+  pinned    Boolean  @default(false)
+  authorId  String?
+  author    User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clientId, pinned, createdAt])
+}
+
+/// Ficheiros do cliente: conteúdo guardado na base de dados (limite de tamanho na camada de aplicação) ou ligação externa.
+model ClientFile {
+  id           String   @id @default(cuid())
+  clientId     String
+  client       Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name         String
+  description  String?
+  mimeType     String?
+  size         Int?
+  sha256       String?
+  data         Bytes?
+  url          String?
+  uploadedById String?
+  uploadedBy   User?    @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime @default(now())
+
+  @@index([clientId, createdAt])
+}
+
+// ───────────────────────── Gestão de anúncios ─────────────────────────
+
+enum AdChangeStatus {
+  DRAFT
+  CONFIRMED
+  APPLYING
+  APPLIED
+  FAILED
+  REVERTED
+  CANCELLED
+}
+
+enum AdChangeOperation {
+  SET_STATUS
+  SET_DAILY_BUDGET
+  CREATE_AD
+  UPDATE_AD
+  ADD_KEYWORDS
+}
+
+/// Alteração proposta numa plataforma de anúncios. Só é aplicada após confirmação explícita do utilizador.
+model AdChange {
+  id               String            @id @default(cuid())
+  clientId         String
+  client           Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  dataSourceId     String
+  dataSource       DataSource        @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  platform         Platform
+  operation        AdChangeOperation
+  /// CAMPAIGN | AD_GROUP | AD
+  entityLevel      String
+  entityId         String?
+  externalId       String?
+  entityName       String
+  before           Json
+  after            Json
+  reason           String?
+  /// MANUAL | RULE | ALLOCATION | AGENT
+  source           String            @default("MANUAL")
+  recommendationId String?
+  planId           String?
+  revertOfId       String?
+  status           AdChangeStatus    @default(DRAFT)
+  simulated        Boolean           @default(false)
+  validation       Json?
+  error            String?
+  createdById      String?
+  confirmedById    String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  confirmedAt      DateTime?
+  appliedAt        DateTime?
+
+  @@index([clientId, status])
+  @@index([planId])
+}
+
+// ───────────────────────── Agente de IA (local) ─────────────────────────
+
+/// Modelo de ML treinado nos dados do cliente (previsão, curva de resposta). Parâmetros e erro de backtest.
+model AgentModel {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  /// FORECAST | RESPONSE_CURVE
+  kind      String
+  /// ex.: "ALL:cost", "GOOGLE_ADS:conversions", "campaign:<id>"
+  scope     String
+  label     String
+  params    Json
+  /// { mape, holdoutDays, n }
+  metrics   Json
+  /// Erro de backtest abaixo do limiar; só modelos fiáveis entram em propostas.
+  reliable  Boolean
+  trainedAt DateTime @default(now())
+
+  @@unique([clientId, kind, scope])
+}
+
+/// Execução do agente (autónoma ou pedida). Nunca aplica alterações: só cria recomendações e propostas.
+model AgentRun {
+  id         String    @id @default(cuid())
+  clientId   String
+  client     Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  /// SCHEDULE | SYNC | MANUAL
+  trigger    String
+  /// RUNNING | SUCCESS | UNAVAILABLE | FAILED
+  status     String    @default("RUNNING")
+  model      String?
+  toolCalls  Json      @default("[]")
+  proposals  Int       @default(0)
+  summary    String?   @db.Text
+  error      String?
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  durationMs Int?
+
+  @@index([clientId, startedAt])
+}
+
+model AgentConversation {
+  id        String         @id @default(cuid())
+  clientId  String
+  client    Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  userId    String
+  title     String
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  messages  AgentMessage[]
+
+  @@index([clientId, userId, updatedAt])
+}
+
+model AgentMessage {
+  id             String            @id @default(cuid())
+  conversationId String
+  conversation   AgentConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  /// user | assistant
+  role           String
+  content        String            @db.Text
+  /// Ferramentas consultadas: [{ name, label, args }]
+  sources        Json?
+  /// Números citados que não aparecem nos resultados das ferramentas.
+  unverified     Json?
+  /// IDs de Recommendation/AdChange criados nesta resposta.
+  proposals      Json?
+  createdAt      DateTime          @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+/// Facto confirmado pelo utilizador e injetado no contexto do agente.
+model AgentMemory {
+  id          String   @id @default(cuid())
+  clientId    String
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  fact        String
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([clientId])
+}
+
+/// Modelo de preferência (regressão logística) treinado com as aprovações e recusas da organização.
+model AgentPreference {
+  organizationId String   @id
+  weights        Json
+  n              Int
+  accuracy       Float?
+  trainedAt      DateTime @default(now())
+}
+
+// ───────────────────────── Concorrência (fontes gratuitas e oficiais) ─────────────────────────
+
+/// Concorrente de um cliente. `suggested`: proposto pelo hub (anunciantes da Biblioteca da Meta), ainda não aceite.
+model Competitor {
+  id          String   @id @default(cuid())
+  clientId    String
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name        String
+  domain      String?
+  metaPageIds String[]
+  notes       String?
+  suggested   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  pages       CompetitorPage[]
+  ads         CompetitorAd[]
+  keywordIdeas KeywordIdea[]
+  pageSpeed   PageSpeedResult[]
+
+  @@index([clientId])
+}
+
+/// Página pública rastreada (concorrente ou, com competitorId nulo, o site do cliente). Substituída em cada rastreio.
+model CompetitorPage {
+  id              String      @id @default(cuid())
+  clientId        String
+  competitorId    String?
+  competitor      Competitor? @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  url             String
+  status          Int
+  title           String?
+  metaDescription String?
+  h1              String[]
+  h2              String[]
+  wordCount       Int         @default(0)
+  canonical       String?
+  lang            String?
+  structuredData  String[]
+  lastModified    DateTime?
+  simulated       Boolean     @default(false)
+  fetchedAt       DateTime    @default(now())
+
+  @@unique([clientId, url])
+  @@index([clientId, competitorId])
+}
+
+/// Anúncio ativo de um concorrente na Biblioteca de Anúncios da Meta.
+model CompetitorAd {
+  id           String      @id @default(cuid())
+  clientId     String
+  competitorId String?
+  competitor   Competitor? @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  /// META_AD_LIBRARY
+  source       String
+  externalId   String
+  pageId       String
+  pageName     String
+  bodies       String[]
+  titles       String[]
+  descriptions String[]
+  captions     String[]
+  platforms    String[]
+  startDate    DateTime?
+  stopDate     DateTime?
+  snapshotUrl  String?
+  simulated    Boolean     @default(false)
+  firstSeenAt  DateTime    @default(now())
+  lastSeenAt   DateTime    @default(now())
+
+  @@unique([clientId, source, externalId])
+  @@index([clientId, competitorId])
+}
+
+/// Ideia de palavra-chave do Keyword Planner (sempre estimativa da Google). seed: domínio ou URL de origem.
+model KeywordIdea {
+  id                 String      @id @default(cuid())
+  clientId           String
+  competitorId       String?
+  competitor         Competitor? @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  /// GOOGLE_KEYWORD_PLANNER | SIMULATED
+  source             String
+  seed               String
+  keyword            String
+  avgMonthlySearches Int?
+  competition        String?
+  competitionIndex   Int?
+  lowCpc             Decimal?    @db.Decimal(18, 2)
+  highCpc            Decimal?    @db.Decimal(18, 2)
+  currency           String
+  fetchedAt          DateTime    @default(now())
+
+  @@unique([clientId, seed, keyword])
+  @@index([clientId, fetchedAt])
+}
+
+/// Resultado da PageSpeed Insights (telemóvel). fieldData: métricas reais do CrUX em vez de laboratório.
+model PageSpeedResult {
+  id           String      @id @default(cuid())
+  clientId     String
+  competitorId String?
+  competitor   Competitor? @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  url          String
+  strategy     String      @default("mobile")
+  score        Float?
+  lcpMs        Float?
+  inpMs        Float?
+  cls          Float?
+  fieldData    Boolean     @default(false)
+  simulated    Boolean     @default(false)
+  fetchedAt    DateTime    @default(now())
+
+  @@index([clientId, url, fetchedAt])
+}
+
+// ───────────────────────── Configuração da instalação ─────────────────────────
+
+/// Configuração das integrações editável na interface. Sobrepõe-se às variáveis de ambiente; valores sempre encriptados (AES-256-GCM).
+model AppSetting {
+  key         String   @id
+  valueEnc    String
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+}
+
+// ───────────────────────── Auditoria ─────────────────────────
+
+model AuditLog {
+  id             String        @id @default(cuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  clientId       String?
+  client         Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  userId         String?
+  user           User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action         String
+  targetType     String?
+  targetId       String?
+  metadata       Json?
+  ipHash         String?
+  createdAt      DateTime      @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([clientId, createdAt])
+}

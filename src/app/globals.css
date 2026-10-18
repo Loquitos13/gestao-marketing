@@ -1,0 +1,143 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --bg: #f7f7f8;
+  --surface: #ffffff;
+  --surface-2: #fafafa;
+  --hover: #f2f2f4;
+  --border: #e7e7ea;
+  --border-strong: #d6d6db;
+  --fg: #17171a;
+  --fg-2: #4d4d55;
+  --muted: #85858f;
+  --faint: #a8a8b1;
+  --accent: #5b5bd6;
+  --accent-soft: #eeeefc;
+  --accent-fg: #ffffff;
+  --inverse: #17171a;
+  --inverse-fg: #ffffff;
+  --good: #18794e;
+  --good-soft: #e9f6ef;
+  --bad: #c4320a;
+  --bad-soft: #fdf0eb;
+  --warn: #a35200;
+  --warn-soft: #fdf5e6;
+  --google: #7474e0;
+  --meta: #5fb3a9;
+  --seo: #a1a1aa;
+  --chart-1: #7474e0;
+  --chart-2: #5fb3a9;
+  --chart-3: #17171a;
+  --chart-4: #c98a2e;
+  --chart-5: #a1a1aa;
+}
+
+.dark {
+  --bg: #0e0e10;
+  --surface: #151518;
+  --surface-2: #1a1a1e;
+  --hover: #202025;
+  --border: #26262c;
+  --border-strong: #34343c;
+  --fg: #ececf0;
+  --fg-2: #b4b4bd;
+  --muted: #8a8a94;
+  --faint: #5f5f69;
+  --accent: #8b8bf0;
+  --accent-soft: #23234a;
+  --accent-fg: #0e0e10;
+  --inverse: #ececf0;
+  --inverse-fg: #0e0e10;
+  --good: #4cc38a;
+  --good-soft: #132a1f;
+  --bad: #f2866a;
+  --bad-soft: #2e1a14;
+  --warn: #e4a14a;
+  --warn-soft: #2c2214;
+  --google: #8b8bf0;
+  --meta: #6cc4b9;
+  --seo: #8a8a94;
+  --chart-1: #8b8bf0;
+  --chart-2: #6cc4b9;
+  --chart-3: #ececf0;
+  --chart-4: #e4a14a;
+  --chart-5: #8a8a94;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-hover: var(--hover);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-fg: var(--accent-fg);
+  --color-inverse: var(--inverse);
+  --color-inverse-fg: var(--inverse-fg);
+  --color-good: var(--good);
+  --color-good-soft: var(--good-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-google: var(--google);
+  --color-meta: var(--meta);
+  --color-seo: var(--seo);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+body {
+  font-size: 13px;
+  line-height: 1.45;
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  border-color: var(--border);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+input,
+select,
+textarea {
+  background: var(--surface);
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+    color: #000;
+  }
+  .print-break {
+    break-before: page;
+  }
+  .avoid-break {
+    break-inside: avoid;
+  }
+}

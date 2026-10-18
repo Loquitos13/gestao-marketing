@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Google Ads · Loja Atlântico — Marketing Hub</title>
+<link rel="stylesheet" href="assets/styles.css" />
+<script src="https://mcp.figma.com/mcp/html-to-design/capture.js" async></script>
+</head>
+<body>
+<script src="assets/app.js"></script>
+<script>
+const page = renderShell("Google Ads", {
+  actions: `<button class="btn ghost">${icon("download", 14)}Exportar</button><a class="btn primary" href="relatorio.html">${icon("file", 14)}Gerar relatório</a>`,
+});
+
+const T = (label, value, unit, prev, cur, p, o = {}) => kpiTile({ label, value, unit, prev, delta: deltaHtml(cur, p, o), formula: o.f || "" });
+const groups = [
+  ["Investimento e tráfego", [
+    T("Custo", "7 412", "€", "7 050 €", 7412, 7050, { neutral: true, f: "metrics.cost_micros ÷ 1 000 000" }),
+    T("Impressões", "412 860", "", "389 120", 412860, 389120),
+    T("Cliques", "18 940", "", "17 610", 18940, 17610),
+    T("CTR", "4,59", "%", "4,53%", 0.0459, 0.0453, { unit: "pp", f: "Cliques ÷ Impressões" }),
+    T("CPC médio", "0,39", "€", "0,40 €", 0.39, 0.4, { invert: true, f: "Custo ÷ Cliques" }),
+  ]],
+  ["Conversão", [
+    T("Conversões", "702", "", "661", 702, 661, { f: "Conversões primárias (coluna Conversões)" }),
+    T("Taxa de conversão", "3,71", "%", "3,75%", 0.0371, 0.0375, { unit: "pp", f: "Conversões ÷ Interações" }),
+    T("Custo/conversão", "10,56", "€", "10,67 €", 10.56, 10.67, { invert: true, f: "Custo ÷ Conversões" }),
+    T("Valor de conversão", "52 340", "€", "50 190 €", 52340, 50190),
+    T("ROAS", "7,06", "×", "7,12×", 7.06, 7.12, { f: "Valor de conversão ÷ Custo" }),
+  ]],
+  ["Competitividade na pesquisa", [
+    T("Parcela de impressões", "64,2", "%", "66,0%", 0.642, 0.66, { unit: "pp", f: "search_impression_share (campanhas de pesquisa e Shopping)" }),
+    T("Perdida · orçamento", "12,8", "%", "10,1%", 0.128, 0.101, { unit: "pp", invert: true, f: "search_budget_lost_impression_share" }),
+    T("Perdida · classificação", "23,0", "%", "23,9%", 0.23, 0.239, { unit: "pp", invert: true, f: "search_rank_lost_impression_share" }),
+    T("Parcela no topo", "48,1", "%", "47,2%", 0.481, 0.472, { unit: "pp", f: "search_top_impression_share" }),
+    T("Topo absoluto", "27,4", "%", "26,8%", 0.274, 0.268, { unit: "pp", f: "search_absolute_top_impression_share" }),
+  ]],
+  ["Alcance alargado e vídeo", [
+    T("Todas as conversões", "781", "", "742", 781, 742, { f: "Inclui conversões secundárias e entre dispositivos" }),
+    T("Conv. pós-visualização", "96", "", "88", 96, 88, { f: "view_through_conversions (Display, YouTube, Demand Gen)" }),
+    T("Visualizações de vídeo", "38 410", "", "31 200", 38410, 31200),
+    T("Taxa de visualização", "21,6", "%", "20,4%", 0.216, 0.204, { unit: "pp", f: "Visualizações ÷ Impressões de vídeo" }),
+    T("CPM médio", "17,95", "€", "18,12 €", 17.95, 18.12, { invert: true, f: "Custo ÷ Impressões × 1000" }),
+  ]],
+];
+
+const C = [
+  ["PMax · Coleção Outono", "Performance Max", "on", 110, 2960, 186400, 6820, 318, 24864, null, null, null, "Limitada pelo orçamento"],
+  ["Shopping · Catálogo completo", "Shopping", "on", 60, 1784, 112300, 4610, 151, 13112, 0.583, 0.096, 0.321],
+  ["Pesquisa · Genéricas linho", "Pesquisa", "on", 45, 1148, 38900, 2380, 49, 3272, 0.416, 0.204, 0.38],
+  ["Pesquisa · Marca", "Pesquisa", "on", 25, 612, 14820, 4210, 164, 8690, 0.912, 0.011, 0.077],
+  ["YouTube · Lançamento outono", "Vídeo", "on", 20, 528, 52400, 520, 9, 1548, null, null, null],
+  ["Demand Gen · Remarketing", "Demand Gen", "off", 15, 380, 8040, 400, 11, 854, null, null, null, "Em pausa desde 24 set"],
+];
+const na = '<span class="muted" title="Métrica não disponível para este tipo de campanha">—</span>';
+const rows = C.map(([n, t, st, b, cost, imp, cl, cv, val, is, lb, lr, flag]) => `
+  <tr><td class="sticky"><div class="cell-name"><span class="dot ${st}"></span><div><div class="t">${n}</div><div class="s">${t}${flag ? ` · ${flag}` : ""}</div></div></div></td>
+  <td class="n">${eur(b)}/dia</td><td class="n strong">${eur(cost)}</td><td class="n">${num(imp)}</td><td class="n">${num(cl)}</td>
+  <td class="n">${pct(cl / imp, 2)}</td><td class="n">${eur(cost / cl, 2)}</td><td class="n">${num(cv)}</td><td class="n">${pct(cv / cl, 2)}</td>
+  <td class="n">${eur(cost / cv, 2)}</td><td class="n">${eur(val)}</td><td class="n strong">${x(val / cost)}</td>
+  <td class="n">${is == null ? na : pct(is)}</td><td class="n">${lb == null ? na : pct(lb)}</td><td class="n">${lr == null ? na : pct(lr)}</td></tr>`).join("");
+
+const terms = [
+  ["vestido linho mulher", "Frase", 612, 251, 31, 0.0],
+  ["camisa linho homem", "Exata", 488, 182, 24, 0.0],
+  ["loja atlantico", "Marca", 1904, 196, 88, 0.0],
+  ["linho barato", "Ampla", 341, 166, 2, 1],
+  ["calças linho", "Frase", 402, 171, 14, 0.0],
+  ["como lavar linho", "Ampla", 220, 74, 0, 1],
+];
+const termRows = terms.map(([t, m, cl, cost, cv, neg]) => `<tr><td>${t}${neg ? ' <span class="pill neg">Proposta: palavra negativa</span>' : ""}</td><td class="muted">${m}</td><td class="n">${num(cl)}</td><td class="n">${eur(cost)}</td><td class="n">${num(cv)}</td><td class="n">${cv ? eur(cost / cv, 2) : na}</td><td class="n">${pct(cv / cl, 1)}</td></tr>`).join("");
+
+const r = rng(77);
+const heat = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((d, di) =>
+  `<span class="lb">${d}</span>` + Array.from({ length: 24 }, (_, h) => {
+    const base = Math.exp(-((h - 21) ** 2) / 18) * 0.9 + Math.exp(-((h - 13) ** 2) / 10) * 0.55 + (h < 7 ? 0.02 : 0.12);
+    const v = Math.min(1, base * (di > 4 ? 1.15 : 1) * (0.8 + r() * 0.4));
+    return `<i style="opacity:${(0.08 + v * 0.92).toFixed(2)}" title="${d} ${h}h"></i>`;
+  }).join("")).join("") + '<span></span>' + Array.from({ length: 24 }, (_, h) => `<span style="text-align:center">${h % 6 === 0 ? h : ""}</span>`).join("");
+
+const qs = [[1, 0], [2, 1], [3, 2], [4, 6], [5, 9], [6, 14], [7, 22], [8, 18], [9, 9], [10, 4]];
+
+page.innerHTML = `
+<div class="toolbar">
+  ${periodControls}
+  <span class="chip on">Contas: 4${icon("chevDown", 12)}</span>
+  <span class="chip">Tipo: todos${icon("chevDown", 12)}</span>
+  <span class="chip">Rede: todas${icon("chevDown", 12)}</span>
+  <span class="chip">Estado: ativas e em pausa${icon("chevDown", 12)}</span>
+  <span class="spacer"></span>
+  <span class="muted" style="font-size:12px">Google Ads API · atribuição baseada em dados · sinc. há 4 min</span>
+</div>
+
+<div class="kpis" style="grid-template-columns:repeat(5,1fr)">
+  ${groups.map(([g, tiles]) => `<div class="kpi-group">${g}</div>${tiles.join("")}`).join("")}
+</div>
+
+<div class="grid g-2" style="margin-top:16px;grid-template-columns:1.6fr 1fr">
+  <section class="panel">
+    <div class="panel-h"><h3>Custo e conversões por dia</h3>
+      <div class="r legend"><span><i class="sw" style="background:var(--google)"></i>Custo (€)</span><span><i class="sw" style="background:var(--fg)"></i>Conversões (eixo dir.)</span></div></div>
+    <div class="panel-b" style="padding-bottom:10px">
+      ${comboChart({ labels: DAYS.map(dayLbl), bars: [{ values: series(31, 30, 247, 0.2, 0.1), color: "var(--google)" }], line: { values: series(32, 30, 23.4, 0.3, 0.1), color: "var(--fg)" }, h: 200, yFmt: (v) => eur(v), y2Fmt: (v) => num(v) })}
+      <div class="caption">Custo diário (€) e conversões · todas as campanhas Google Ads · 1–30 set 2026</div>
+    </div>
+  </section>
+  <section class="panel">
+    <div class="panel-h"><h3>Por dispositivo</h3><span class="sub">custo e custo/conv.</span></div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Dispositivo</th><th class="n">Custo</th><th class="n">Peso</th><th class="n">Conv.</th><th class="n">Custo/conv.</th><th class="n">ROAS</th></tr></thead>
+      <tbody>
+        <tr><td>Telemóvel</td><td class="n">4 745 €</td><td class="n">64%</td><td class="n">418</td><td class="n">11,35 €</td><td class="n">6,41×</td></tr>
+        <tr><td>Computador</td><td class="n">2 298 €</td><td class="n">31%</td><td class="n">252</td><td class="n">9,12 €</td><td class="n">8,46×</td></tr>
+        <tr><td>Tablet</td><td class="n">369 €</td><td class="n">5%</td><td class="n">32</td><td class="n">11,53 €</td><td class="n">6,02×</td></tr>
+      </tbody></table></div>
+    <div class="panel-h" style="border-top:1px solid var(--border)"><h3>Por rede</h3></div>
+    <div class="panel-b" style="padding-top:8px">${hbars([{ l: "Pesquisa Google", v: 3504 }, { l: "Shopping", v: 2210 }, { l: "YouTube", v: 812 }, { l: "Display", v: 604 }, { l: "Parceiros", v: 282 }], { fmt: (v) => eur(v), color: "var(--google)" })}</div>
+  </section>
+</div>
+
+<div class="section-t"><h2>Campanhas</h2><span class="sub">6 campanhas · ordenadas por custo</span><div class="r"><button class="btn sm">${icon("filter", 13)}Colunas</button></div></div>
+<section class="panel"><div class="tbl-wrap"><table>
+  <thead><tr><th class="sticky">Campanha</th><th class="n">Orçamento</th><th class="n">Custo</th><th class="n">Impressões</th><th class="n">Cliques</th><th class="n">CTR</th><th class="n">CPC méd.</th><th class="n">Conv.</th><th class="n">Taxa conv.</th><th class="n">Custo/conv.</th><th class="n">Valor conv.</th><th class="n">ROAS</th><th class="n">Parcela impr.</th><th class="n">Perdida (orç.)</th><th class="n">Perdida (class.)</th></tr></thead>
+  <tbody>${rows}
+    <tr class="total"><td class="sticky" style="background:var(--surface-2)">Total</td><td class="n">275 €/dia</td><td class="n">7 412 €</td><td class="n">412 860</td><td class="n">18 940</td><td class="n">4,59%</td><td class="n">0,39 €</td><td class="n">702</td><td class="n">3,71%</td><td class="n">10,56 €</td><td class="n">52 340 €</td><td class="n">7,06×</td><td class="n">64,2%</td><td class="n">12,8%</td><td class="n">23,0%</td></tr>
+  </tbody></table></div></section>
+<div class="caption">«—» indica métrica que a Google Ads não disponibiliza para o tipo de campanha (ex.: parcela de impressões em Performance Max e vídeo).</div>
+
+<div class="grid g-2" style="margin-top:16px;grid-template-columns:1.4fr 1fr">
+  <section class="panel">
+    <div class="panel-h"><h3>Termos de pesquisa</h3><span class="sub">top por custo</span><div class="r"><a class="btn sm ghost" href="#">Ver 1 240 termos${icon("chevRight", 13)}</a></div></div>
+    <div class="tbl-wrap"><table><thead><tr><th>Termo</th><th>Correspondência</th><th class="n">Cliques</th><th class="n">Custo</th><th class="n">Conv.</th><th class="n">Custo/conv.</th><th class="n">Taxa conv.</th></tr></thead><tbody>${termRows}</tbody></table></div>
+    <div class="caption" style="padding:0 16px 12px">Propostas não são aplicadas automaticamente na conta.</div>
+  </section>
+  <div class="stack">
+    <section class="panel">
+      <div class="panel-h"><h3>Conversões por hora e dia</h3><span class="sub">fuso da conta</span></div>
+      <div class="panel-b"><div class="heat">${heat}</div><div class="caption">Intensidade relativa de conversões (0–100%) · hora local · 1–30 set</div></div>
+    </section>
+    <section class="panel">
+      <div class="panel-h"><h3>Índice de qualidade</h3><span class="sub">85 palavras-chave ativas</span></div>
+      <div class="panel-b">
+        <div style="display:flex;align-items:flex-end;gap:6px;height:90px">${qs.map(([q, n]) => `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end"><span class="num muted" style="font-size:10.5px">${n}</span><i style="width:100%;height:${(n / 22) * 70}px;background:${q >= 7 ? "var(--google)" : "var(--border-strong)"};border-radius:2px"></i><span class="muted" style="font-size:10.5px">${q}</span></div>`).join("")}</div>
+        <div class="caption">Número de palavras-chave por índice de qualidade (1–10). Média ponderada por impressões: 7,1.</div>
+      </div>
+    </section>
+  </div>
+</div>
+`;
+</script>
+</body>
+</html>

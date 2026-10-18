@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Meta Ads · Loja Atlântico — Marketing Hub</title>
+<link rel="stylesheet" href="assets/styles.css" />
+<script src="https://mcp.figma.com/mcp/html-to-design/capture.js" async></script>
+</head>
+<body>
+<script src="assets/app.js"></script>
+<script>
+const page = renderShell("Meta Ads", {
+  actions: `<button class="btn ghost">${icon("download", 14)}Exportar</button><a class="btn primary" href="relatorio.html">${icon("file", 14)}Gerar relatório</a>`,
+});
+
+const T = (label, value, unit, prev, cur, p, o = {}) => kpiTile({ label, value, unit, prev, delta: deltaHtml(cur, p, o), formula: o.f || "" });
+const groups = [
+  ["Distribuição", [
+    T("Valor gasto", "3 625", "€", "3 574 €", 3625, 3574, { neutral: true, f: "spend" }),
+    T("Alcance", "186 200", "", "171 900", 186200, 171900, { f: "Pessoas únicas no período (não somável entre dias ou campanhas)" }),
+    T("Impressões", "512 400", "", "468 100", 512400, 468100),
+    T("Frequência", "2,75", "", "2,72", 2.75, 2.72, { invert: true, f: "Impressões ÷ Alcance" }),
+    T("CPM", "7,07", "€", "7,64 €", 7.07, 7.64, { invert: true, f: "Valor gasto ÷ Impressões × 1000" }),
+  ]],
+  ["Tráfego", [
+    T("Cliques no link", "6 140", "", "5 880", 6140, 5880, { f: "inline_link_clicks" }),
+    T("CTR (link)", "1,20", "%", "1,26%", 0.012, 0.0126, { unit: "pp", f: "Cliques no link ÷ Impressões" }),
+    T("CPC (link)", "0,59", "€", "0,61 €", 0.59, 0.61, { invert: true, f: "Valor gasto ÷ Cliques no link" }),
+    T("Visualizações da página", "4 810", "", "4 510", 4810, 4510, { f: "landing_page_view (requer Pixel/CAPI)" }),
+    T("Custo por visualização", "0,75", "€", "0,79 €", 0.75, 0.79, { invert: true, f: "Valor gasto ÷ Visualizações da página de destino" }),
+  ]],
+  ["Conversão", [
+    T("Compras", "302", "", "305", 302, 305, { f: "purchase (atribuição 7 dias após clique, 1 dia após visualização)" }),
+    T("Custo por compra", "12,00", "€", "11,72 €", 12.0, 11.72, { invert: true, f: "Valor gasto ÷ Compras" }),
+    T("Valor das compras", "18 766", "€", "18 120 €", 18766, 18120),
+    T("ROAS das compras", "5,18", "×", "5,07×", 5.18, 5.07, { f: "Valor das compras ÷ Valor gasto" }),
+    kpiTile({ label: "Leads", formula: "lead", na: "Sem campanhas de geração de leads" }),
+  ]],
+  ["Criativo e vídeo", [
+    T("Taxa de retenção inicial", "32,0", "%", "34,8%", 0.32, 0.348, { unit: "pp", f: "Reproduções de 3 s ÷ Impressões de vídeo (hook rate)" }),
+    T("Taxa de visualização completa", "23,2", "%", "22,9%", 0.232, 0.229, { unit: "pp", f: "ThruPlays ÷ Reproduções de 3 s (hold rate)" }),
+    T("ThruPlays", "21 400", "", "19 800", 21400, 19800, { f: "Reproduções até 15 s ou até ao fim" }),
+    T("Custo por ThruPlay", "0,08", "€", "0,09 €", 0.08, 0.09, { invert: true }),
+    T("Interações com publicação", "14 380", "", "13 050", 14380, 13050, { f: "Reações, comentários, partilhas, guardados e cliques" }),
+  ]],
+];
+
+const C = [
+  ["Advantage+ Shopping · Outono", "Vendas · ASC", "on", 1420, 92000, 220800, 2760, 151, 10120],
+  ["Prospecting · Lookalike 2%", "Vendas · 3 conjuntos", "on", 1284, 81400, 168300, 1860, 71, 4006, "Frequência 4,1 no conjunto «Mulheres 25–44»"],
+  ["Retargeting · 30 dias", "Vendas · catálogo", "on", 641, 14200, 88000, 1240, 72, 4140],
+  ["Tráfego · Blog linho", "Tráfego", "off", 280, 30100, 35300, 280, 8, 500, "Em pausa desde 26 set"],
+];
+const rows = C.map(([n, t, st, sp, reach, imp, cl, pu, val, flag]) => `
+  <tr><td class="sticky"><div class="cell-name"><span class="dot ${st}"></span><div><div class="t">${n}</div><div class="s">${t}${flag ? ` · ${flag}` : ""}</div></div></div></td>
+  <td class="n strong">${eur(sp)}</td><td class="n">${num(reach)}</td><td class="n">${num(imp / reach, 2)}</td><td class="n">${num(imp)}</td><td class="n">${eur((sp / imp) * 1000, 2)}</td>
+  <td class="n">${num(cl)}</td><td class="n">${pct(cl / imp, 2)}</td><td class="n">${eur(sp / cl, 2)}</td><td class="n">${num(pu)}</td><td class="n">${eur(sp / pu, 2)}</td><td class="n">${eur(val)}</td><td class="n strong">${x(val / sp)}</td></tr>`).join("");
+
+const P = [["Feed do Facebook", 1010, 141200, 1720, 92, 5640], ["Feed do Instagram", 1180, 152600, 2010, 118, 7740], ["Stories do Instagram", 520, 82400, 760, 34, 1820], ["Reels do Instagram", 760, 118900, 1510, 54, 3360], ["Audience Network", 120, 14800, 120, 3, 150], ["Messenger", 35, 2500, 20, 1, 56]];
+const pRows = P.map(([n, sp, imp, cl, pu, val]) => `<tr><td>${n}</td><td class="n">${eur(sp)}</td><td class="n">${eur((sp / imp) * 1000, 2)}</td><td class="n">${pct(cl / imp, 2)}</td><td class="n">${num(pu)}</td><td class="n">${eur(sp / pu, 2)}</td><td class="n strong">${x(val / sp)}</td></tr>`).join("");
+
+const funnel = [["Impressões", 512400], ["Cliques no link", 6140], ["Visualizações da página", 4810], ["Adições ao carrinho", 1420], ["Checkouts iniciados", 640], ["Compras", 302]];
+const fHtml = funnel.map(([l, v], i) => {
+  const w = Math.max(6, Math.pow(v / funnel[0][1], 0.28) * 100);
+  const rate = i ? `<span class="muted">${pct(v / funnel[i - 1][1], 1)} do passo anterior</span>` : '<span class="muted">base</span>';
+  return `<div style="display:grid;grid-template-columns:170px 1fr 90px 180px;gap:12px;align-items:center;padding:6px 0">
+    <span class="fg2">${l}</span><span style="height:18px;background:var(--hover);border-radius:3px;overflow:hidden"><i style="display:block;height:100%;width:${w}%;background:var(--meta);opacity:${1 - i * 0.1}"></i></span>
+    <span class="num" style="text-align:right;font-weight:500">${num(v)}</span>${rate}</div>`;
+}).join("");
+
+const creatives = [
+  ["Vídeo linho 9:16", "Reels · vídeo 15 s", 0.214, 0.181, 0.0081, 18.9, 2.71, 4.1, "Fadiga", "Abaixo da média", "Média"],
+  ["Carrossel coleção outono", "Feed · 6 cartões", null, null, 0.0162, 8.7, 7.8, 2.2, null, "Acima da média", "Acima da média"],
+  ["UGC · cliente experimenta", "Stories · vídeo 22 s", 0.418, 0.276, 0.0141, 10.4, 6.1, 2.6, null, "Acima da média", "Média"],
+  ["Catálogo dinâmico", "Feed · catálogo", null, null, 0.0133, 8.9, 6.5, 6.2, null, "Média", "Acima da média"],
+];
+const cHtml = creatives.map(([n, f, hook, hold, ctr, cpa, roas, freq, flag, q, c]) => `
+  <div class="panel" style="overflow:hidden">
+    <div style="aspect-ratio:16/10;background:var(--surface-2);border-bottom:1px solid var(--border);display:grid;place-items:center;color:var(--fg-3);font-size:12px;position:relative">
+      ${icon(hook ? "eye" : "file", 18)}<span style="position:absolute;left:10px;top:10px" class="pill">${f.split(" · ")[1]}</span>
+      ${flag ? `<span style="position:absolute;right:10px;top:10px" class="pill neg">${flag}</span>` : ""}
+    </div>
+    <div style="padding:12px 14px">
+      <div style="font-weight:500">${n}</div><div class="muted" style="font-size:12px">${f}</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px 12px;margin-top:10px;font-size:12px">
+        <div><div class="muted">Retenção 3 s</div><div class="num" style="font-weight:500">${hook == null ? "—" : pct(hook)}</div></div>
+        <div><div class="muted">CTR (link)</div><div class="num" style="font-weight:500">${pct(ctr, 2)}</div></div>
+        <div><div class="muted">Frequência</div><div class="num" style="font-weight:500">${num(freq, 1)}</div></div>
+        <div><div class="muted">Custo/compra</div><div class="num" style="font-weight:500">${eur(cpa, 2)}</div></div>
+        <div><div class="muted">ROAS</div><div class="num" style="font-weight:500">${x(roas)}</div></div>
+        <div><div class="muted">Retenção total</div><div class="num" style="font-weight:500">${hold == null ? "—" : pct(hold)}</div></div>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap"><span class="pill">Qualidade: ${q}</span><span class="pill">Conversão: ${c}</span></div>
+    </div>
+  </div>`).join("");
+
+page.innerHTML = `
+<div class="toolbar">
+  ${periodControls}
+  <span class="chip on">Conta: Loja Atlântico (act_…4821)${icon("chevDown", 12)}</span>
+  <span class="chip">Atribuição: 7 d clique, 1 d visualização${icon("chevDown", 12)}</span>
+  <span class="chip">Nível: campanha${icon("chevDown", 12)}</span>
+  <span class="spacer"></span>
+  <span class="muted" style="font-size:12px">Meta Marketing API · sinc. há 12 min</span>
+</div>
+
+<div class="kpis" style="grid-template-columns:repeat(5,1fr)">
+  ${groups.map(([g, tiles]) => `<div class="kpi-group">${g}</div>${tiles.join("")}`).join("")}
+</div>
+
+<div class="grid" style="margin-top:16px;grid-template-columns:1.25fr 1fr">
+  <section class="panel">
+    <div class="panel-h"><h3>Funil de conversão</h3><span class="sub">todas as campanhas de vendas</span></div>
+    <div class="panel-b">${fHtml}<div class="caption">Contagens reportadas pelo Pixel e API de Conversões. Barras em escala comprimida para legibilidade.</div></div>
+  </section>
+  <section class="panel">
+    <div class="panel-h"><h3>Valor gasto por idade</h3><span class="sub">e custo por compra</span></div>
+    <div class="panel-b">
+      ${hbars([{ l: "18–24", v: 412 }, { l: "25–34", v: 1180 }, { l: "35–44", v: 1046 }, { l: "45–54", v: 604 }, { l: "55–64", v: 268 }, { l: "65+", v: 115 }], { fmt: (v) => eur(v), color: "var(--meta)" })}
+      <div style="display:flex;gap:16px;margin-top:12px;font-size:12px" class="fg2"><span>Mulheres <b class="num">71%</b> · 11,10 €/compra</span><span>Homens <b class="num">27%</b> · 14,60 €/compra</span><span class="muted">Desconhecido 2%</span></div>
+    </div>
+  </section>
+</div>
+
+<div class="section-t"><h2>Campanhas</h2><span class="sub">4 campanhas · o alcance total (186 200) é deduplicado e não corresponde à soma das linhas</span></div>
+<section class="panel"><div class="tbl-wrap"><table>
+  <thead><tr><th class="sticky">Campanha</th><th class="n">Valor gasto</th><th class="n">Alcance</th><th class="n">Frequência</th><th class="n">Impressões</th><th class="n">CPM</th><th class="n">Cliques link</th><th class="n">CTR link</th><th class="n">CPC link</th><th class="n">Compras</th><th class="n">Custo/compra</th><th class="n">Valor compras</th><th class="n">ROAS</th></tr></thead>
+  <tbody>${rows}
+    <tr class="total"><td class="sticky" style="background:var(--surface-2)">Total</td><td class="n">3 625 €</td><td class="n">186 200</td><td class="n">2,75</td><td class="n">512 400</td><td class="n">7,07 €</td><td class="n">6 140</td><td class="n">1,20%</td><td class="n">0,59 €</td><td class="n">302</td><td class="n">12,00 €</td><td class="n">18 766 €</td><td class="n">5,18×</td></tr>
+  </tbody></table></div></section>
+
+<div class="grid" style="margin-top:16px;grid-template-columns:1fr 1fr">
+  <section class="panel">
+    <div class="panel-h"><h3>Por posicionamento</h3></div>
+    <div class="tbl-wrap"><table><thead><tr><th>Posicionamento</th><th class="n">Valor gasto</th><th class="n">CPM</th><th class="n">CTR</th><th class="n">Compras</th><th class="n">Custo/compra</th><th class="n">ROAS</th></tr></thead><tbody>${pRows}</tbody></table></div>
+  </section>
+  <section class="panel">
+    <div class="panel-h"><h3>Valor gasto e compras por dia</h3><div class="r legend"><span><i class="sw" style="background:var(--meta)"></i>Valor gasto (€)</span><span><i class="sw" style="background:var(--fg)"></i>Compras (eixo dir.)</span></div></div>
+    <div class="panel-b">${comboChart({ labels: DAYS.map(dayLbl), bars: [{ values: series(41, 30, 121, 0.25), color: "var(--meta)" }], line: { values: series(42, 30, 10, 0.4), color: "var(--fg)" }, h: 190, yFmt: (v) => eur(v), y2Fmt: (v) => num(v) })}
+    <div class="caption">Valor gasto diário (€) e compras · Meta Ads · 1–30 set 2026</div></div>
+  </section>
+</div>
+
+<div class="section-t"><h2>Criativos</h2><span class="sub">top 4 por valor gasto · diagnósticos de relevância da Meta</span><div class="r"><a class="btn sm ghost" href="#">Ver 23 anúncios${icon("chevRight", 13)}</a></div></div>
+<div class="grid" style="grid-template-columns:repeat(4,1fr)">${cHtml}</div>
+`;
+</script>
+</body>
+</html>

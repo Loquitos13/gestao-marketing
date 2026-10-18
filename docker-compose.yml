@@ -1,0 +1,99 @@
+name: mih
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mih
+      POSTGRES_PASSWORD: mih_dev_password
+      POSTGRES_DB: mih
+    ports:
+      - "5442:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mih -d mih"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6392:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Perfil "full": app + worker em contentores (`docker compose --profile full up -d --build`).
+  # Em desenvolvimento usar `npm run dev` e `npm run worker`.
+  migrate:
+    profiles: ["full"]
+    build: { context: ., target: worker }
+    # Seed inicial (uma vez): docker compose --profile full run --rm migrate npm run db:seed
+    command: ["npx", "prisma", "migrate", "deploy"]
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://mih:mih_dev_password@postgres:5432/mih
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  app:
+    profiles: ["full"]
+    build: { context: ., target: app }
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://mih:mih_dev_password@postgres:5432/mih
+      REDIS_URL: redis://redis:6379
+      # 127.0.0.1 dentro do contentor não é o Ollama deste PC. A app reescreve loopback para host.docker.internal.
+      MIH_IN_DOCKER: "1"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "3100:3100"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3100/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  worker:
+    profiles: ["full"]
+    build: { context: ., target: worker }
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://mih:mih_dev_password@postgres:5432/mih
+      REDIS_URL: redis://redis:6379
+      MIH_IN_DOCKER: "1"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3199/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  redisdata:

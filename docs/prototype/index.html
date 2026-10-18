@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Workspace · Loja Atlântico — Marketing Hub</title>
+<link rel="stylesheet" href="assets/styles.css" />
+<script src="https://mcp.figma.com/mcp/html-to-design/capture.js" async></script>
+</head>
+<body>
+<script src="assets/app.js"></script>
+<script>
+const page = renderShell("Visão geral", {
+  actions: `<button class="btn ghost">${icon("refresh", 14)}Sincronizar</button>
+            <button class="btn">${icon("share", 14)}Partilhar</button>
+            <a class="btn primary" href="relatorio.html">${icon("file", 14)}Gerar relatório</a>`,
+});
+
+const gSpend = series(11, 30, 247, 0.22, 0.12), mSpend = series(12, 30, 121, 0.25, 0.05);
+const revenue = series(13, 30, 2370, 0.3, 0.1);
+const pSpend = series(21, 30, 354, 0.22), pRev = series(22, 30, 2308, 0.3);
+const conv = series(14, 30, 33.5, 0.3, 0.1), pConv = series(24, 30, 32.4, 0.3);
+
+page.innerHTML = `
+<div class="toolbar">
+  ${periodControls}
+  <span class="chip on">Todos os canais${icon("chevDown", 12)}</span>
+  <span class="chip">Dispositivo: todos${icon("chevDown", 12)}</span>
+  <span class="spacer"></span>
+  <span class="muted" style="font-size:12px">Valores em EUR · fuso Europe/Lisbon · dados até 30 set</span>
+</div>
+
+<div class="kpis" style="grid-template-columns:repeat(6,1fr)">
+  ${kpiTile({ label: "Investimento", value: "11 037", unit: "€", prev: "10 624 €", delta: deltaHtml(11037, 10624, { neutral: true }), formula: "Soma do custo reportado pela Google Ads e Meta Ads", sparkCur: gSpend.map((v, i) => v + mSpend[i]), sparkPrev: pSpend })}
+  ${kpiTile({ label: "Receita atribuída", value: "71 106", unit: "€", prev: "69 260 €", delta: deltaHtml(71106, 69260), formula: "Valor de conversão reportado por cada plataforma (atribuição de cada plataforma)", sparkCur: revenue, sparkPrev: pRev })}
+  ${kpiTile({ label: "ROAS", value: "6,44", unit: "×", prev: "6,52×", delta: deltaHtml(6.44, 6.52), formula: "Receita atribuída ÷ Investimento", sparkCur: revenue.map((v, i) => v / (gSpend[i] + mSpend[i])), sparkPrev: pRev.map((v, i) => v / pSpend[i]) })}
+  ${kpiTile({ label: "Conversões", value: "1 004", prev: "971", delta: deltaHtml(1004, 971), formula: "Soma das conversões reportadas pelas plataformas. Modelos de atribuição diferentes.", sparkCur: conv, sparkPrev: pConv })}
+  ${kpiTile({ label: "Custo por conversão", value: "10,99", unit: "€", prev: "10,94 €", delta: deltaHtml(10.99, 10.94, { invert: true }), formula: "Investimento ÷ Conversões", sparkCur: conv.map((c, i) => (gSpend[i] + mSpend[i]) / c), sparkPrev: pConv.map((c, i) => pSpend[i] / c) })}
+  ${kpiTile({ label: "Cliques orgânicos", value: "20 856", prev: "17 280", delta: deltaHtml(20856, 17280), formula: "Google Search Console · cliques na pesquisa orgânica", sparkCur: series(15, 30, 695, 0.15, 0.2), sparkPrev: series(25, 30, 576, 0.15) })}
+</div>
+
+<div class="grid g-main" style="margin-top:16px">
+  <div class="stack">
+    <section class="panel">
+      <div class="panel-h"><h3>Investimento e receita por dia</h3>
+        <div class="r legend">
+          <span><i class="sw" style="background:var(--google)"></i>Google Ads</span>
+          <span><i class="sw" style="background:var(--meta)"></i>Meta Ads</span>
+          <span><i class="sw" style="background:var(--fg)"></i>Receita atribuída (eixo dir.)</span>
+        </div>
+      </div>
+      <div class="panel-b" style="padding-bottom:10px">
+        ${comboChart({ labels: DAYS.map(dayLbl), bars: [{ values: gSpend, color: "var(--google)" }, { values: mSpend, color: "var(--meta)" }], line: { values: revenue, color: "var(--fg)" }, yFmt: (v) => eur(v), y2Fmt: (v) => `${num(v / 1000, 1)} k€` })}
+        <div class="caption">Investimento diário (€, barras) e receita atribuída (€, linha) · Google Ads e Meta Ads · 1–30 set 2026</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h"><h3>Desempenho por canal</h3><span class="sub">Cada plataforma usa a sua própria atribuição; o total é a soma do reportado.</span></div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Canal</th><th class="n">Investimento</th><th class="n">Peso</th><th class="n">Conversões</th><th class="n">Custo/conv.</th><th class="n">Receita</th><th class="n">ROAS</th><th class="n">Δ ROAS</th></tr></thead>
+        <tbody>
+          <tr><td><div class="cell-name"><span class="dot g"></span><span class="t">Google Ads</span><span class="s">4 contas · 18 campanhas</span></div></td><td class="n">7 412 €</td><td class="n"><div class="bar-cell">67%<span class="b"><i style="width:67%;background:var(--google)"></i></span></div></td><td class="n">702</td><td class="n">10,56 €</td><td class="n">52 340 €</td><td class="n strong">7,06×</td><td class="n">${deltaHtml(7.06, 7.12)}</td></tr>
+          <tr><td><div class="cell-name"><span class="dot m"></span><span class="t">Meta Ads</span><span class="s">1 conta · 9 campanhas</span></div></td><td class="n">3 625 €</td><td class="n"><div class="bar-cell">33%<span class="b"><i style="width:33%;background:var(--meta)"></i></span></div></td><td class="n">302</td><td class="n">12,00 €</td><td class="n">18 766 €</td><td class="n strong">5,18×</td><td class="n">${deltaHtml(5.18, 5.07)}</td></tr>
+          <tr class="total"><td>Total reportado</td><td class="n">11 037 €</td><td class="n">100%</td><td class="n">1 004</td><td class="n">10,99 €</td><td class="n">71 106 €</td><td class="n">6,44×</td><td class="n">${deltaHtml(6.44, 6.52)}</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h"><h3>Maiores variações em campanhas</h3><span class="sub">Ordenado pelo impacto absoluto no custo por conversão</span><div class="r"><a class="btn sm ghost" href="google-ads.html">Ver todas${icon("chevRight", 13)}</a></div></div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Campanha</th><th class="n">Investimento</th><th class="n">Conversões</th><th class="n">Custo/conv.</th><th class="n">Δ custo/conv.</th><th class="n">ROAS</th><th>Sinal</th></tr></thead>
+        <tbody>
+          <tr><td><div class="cell-name"><span class="dot m"></span><span class="t">Prospecting · Lookalike 2%</span></div></td><td class="n">1 284 €</td><td class="n">71</td><td class="n">18,08 €</td><td class="n">${deltaHtml(18.08, 13.7, { invert: true })}</td><td class="n">3,12×</td><td><span class="pill neg">Frequência 4,1</span></td></tr>
+          <tr><td><div class="cell-name"><span class="dot g"></span><span class="t">PMax · Coleção Outono</span></div></td><td class="n">2 960 €</td><td class="n">318</td><td class="n">9,31 €</td><td class="n">${deltaHtml(9.31, 11.2, { invert: true })}</td><td class="n">8,40×</td><td><span class="pill pos">Limitada pelo orçamento</span></td></tr>
+          <tr><td><div class="cell-name"><span class="dot g"></span><span class="t">Pesquisa · Marca</span></div></td><td class="n">612 €</td><td class="n">164</td><td class="n">3,73 €</td><td class="n">${deltaHtml(3.73, 3.51, { invert: true })}</td><td class="n">14,2×</td><td><span class="pill">Parcela impr. 91%</span></td></tr>
+          <tr><td><div class="cell-name"><span class="dot g"></span><span class="t">Pesquisa · Genéricas linho</span></div></td><td class="n">1 148 €</td><td class="n">49</td><td class="n">23,43 €</td><td class="n">${deltaHtml(23.43, 21.0, { invert: true })}</td><td class="n">2,85×</td><td><span class="pill">Perdida por classificação 38%</span></td></tr>
+        </tbody>
+      </table></div>
+    </section>
+  </div>
+
+  <div class="stack">
+    <section class="panel">
+      <div class="panel-h"><h3>Tarefas</h3><span class="sub">4 abertas</span><div class="r"><button class="btn sm icon ghost">${icon("plus", 14)}</button></div></div>
+      <div class="list">
+        <div class="li"><span class="check"></span><div><div class="t">Enviar relatório de setembro</div><div class="s">Relatórios · Diogo Pinto</div></div><span class="due late">3 out</span></div>
+        <div class="li"><span class="check"></span><div><div class="t">Rever termos com custo/conv. acima de 25 €</div><div class="s">Google Ads · 12 termos</div></div><span class="due">Hoje</span></div>
+        <div class="li"><span class="check"></span><div><div class="t">Preparar 3 criativos Reels de outono</div><div class="s">Meta Ads · criativo em fadiga</div></div><span class="due">17 out</span></div>
+        <div class="li"><span class="check"></span><div><div class="t">Validar objetivo ROAS do 4.º trimestre</div><div class="s">Reunião com cliente</div></div><span class="due">22 out</span></div>
+        <div class="li done"><span class="check done"></span><div><div class="t">Atualizar feed do Merchant Center</div></div><span class="due">10 out</span></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h"><h3>Ritmo do orçamento</h3><span class="sub">outubro</span></div>
+      <div class="panel-b">
+        <div style="display:flex;justify-content:space-between;align-items:baseline"><span class="num" style="font-size:18px;font-weight:600">5 221 €</span><span class="muted num">de 10 500 €</span></div>
+        <div class="progress" style="margin:10px 0 8px"><i style="width:49.7%"></i><span class="proj" style="left:100%"></span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px"><span class="muted">Dia 15 de 31</span><span>Projeção <b class="num">11 380 €</b> <span class="pill neg">+8,4% acima</span></span></div>
+        <div class="caption">Projeção = gasto até hoje + média dos últimos 7 dias × dias restantes.</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h"><h3>Recomendações</h3><span class="sub">3 por decidir</span></div>
+      <div class="reco"><div class="t">Aumentar orçamento de «PMax · Coleção Outono»</div><div class="s">ROAS 8,40× e 22% de parcela perdida por orçamento nos últimos 14 dias.</div>
+        <div class="meta"><span class="pill">Regra</span><span class="pill pos">Confiança alta</span><div class="acts"><button class="btn sm ghost">Recusar</button><button class="btn sm">Aprovar</button></div></div></div>
+      <div class="reco"><div class="t">Renovar criativo «Vídeo linho 9:16»</div><div class="s">CTR −31% em 3 semanas com frequência 4,1.</div>
+        <div class="meta"><span class="pill">Regra</span><span class="pill">Confiança média</span><div class="acts"><button class="btn sm ghost">Recusar</button><button class="btn sm">Aprovar</button></div></div></div>
+      <div class="caption" style="padding:0 16px 12px">Aprovar apenas regista a decisão. Nenhuma alteração é feita nas plataformas.</div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h"><h3>Notas</h3><div class="r"><button class="btn sm ghost">${icon("plus", 14)}Nota</button></div></div>
+      <div class="note"><div class="by"><span class="pill acc">Fixada</span>Contexto do cliente</div><p>Margem bruta 48%. Objetivo ROAS ≥ 5× por canal. Campanha de outono de 1 out a 15 nov; saldos a partir de 26 dez.</p></div>
+      <div class="note"><div class="by"><span class="avatar" style="width:18px;height:18px;font-size:8.5px">DP</span>Diogo Pinto · 9 out</div><p>Cliente pediu para separar no relatório as vendas da coleção de linho.</p></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h"><h3>Atividade</h3><div class="r"><a class="btn sm ghost" href="#">Ver tudo</a></div></div>
+      <div class="list timeline">
+        <div class="li"><span class="tl-ic">${icon("refresh", 12)}</span><div><div>Google Ads sincronizado</div><div class="s">51 800 linhas · incremental · há 4 min</div></div></div>
+        <div class="li"><span class="tl-ic">${icon("alert", 12)}</span><div><div>Alerta: custo/conv. Meta subiu 32%</div><div class="s">Prospecting · Lookalike 2% · há 2 h</div></div></div>
+        <div class="li"><span class="tl-ic">${icon("check", 12)}</span><div><div>Diogo aprovou «Excluir Audience Network»</div><div class="s">Recomendação · ontem</div></div></div>
+        <div class="li"><span class="tl-ic">${icon("file", 12)}</span><div><div>Relatório mensal de setembro gerado</div><div class="s">PDF · 22 secções · 1 out</div></div></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="source-bar">
+  <span><span class="dot on"></span>Google Ads · há 4 min</span>
+  <span><span class="dot on"></span>Meta Ads · há 12 min</span>
+  <span><span class="dot on"></span>Search Console · dados até 27 set</span>
+  <span><span class="dot on"></span>GA4 · há 1 h</span>
+  <span><span class="dot off"></span>Semrush · não ligado</span>
+  <span style="margin-left:auto">Dados fictícios de demonstração</span>
+</div>`;
+</script>
+</body>
+</html>
